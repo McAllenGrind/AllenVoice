@@ -8,12 +8,12 @@
     "outDir": "./dist",
 
     "strict": true,
-
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
 
-    "skipLibCheck": true
+    "types": ["node"]
   },
-
-  "include": ["src"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
 }
