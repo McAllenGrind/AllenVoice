@@ -19,6 +19,7 @@ model Company {
 
   user            User?
   aiConfiguration AIConfiguration?
+  knowledgeBase   KnowledgeBase?
 }
 
 model User {
@@ -45,4 +46,38 @@ model AIConfiguration {
 
   companyId String  @unique
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+enum KnowledgeSourceType {
+  TEXT
+  FAQ
+  PDF
+  WORD
+}
+
+model KnowledgeBase {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  companyId String  @unique
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  documents KnowledgeDocument[]
+}
+
+model KnowledgeDocument {
+  id         String              @id @default(uuid())
+  title      String
+  category   String?
+  content    String
+  sourceType KnowledgeSourceType @default(TEXT)
+  isActive   Boolean             @default(true)
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  knowledgeBaseId String
+  knowledgeBase   KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+
+  @@index([knowledgeBaseId])
 }

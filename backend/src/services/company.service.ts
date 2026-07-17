@@ -71,6 +71,10 @@ export const companyService = {
       aiConfiguration: {
         create: DEFAULT_AI_CONFIGURATION,
       },
+
+      knowledgeBase: {
+        create: {},
+    },
     };
 
     return companyRepository.create(companyData);
