@@ -1,6 +1,8 @@
-import express from "express";
 import cors from "cors";
+import express from "express";
 import { prisma } from "./lib/prisma.js";
+import { errorMiddleware } from "./middlewares/error.middleware.js";
+import companyRouter from "./routes/company.routes.js";
 
 const app = express();
 
@@ -32,5 +34,10 @@ app.get("/health/database", async (_req, res) => {
     });
   }
 });
+
+app.use("/companies", companyRouter);
+
+// Toujours placer le middleware d’erreurs après les routes.
+app.use(errorMiddleware);
 
 export default app;

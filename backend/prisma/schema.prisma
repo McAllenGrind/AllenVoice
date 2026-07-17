@@ -11,11 +11,11 @@ model Company {
   id          String   @id @default(uuid())
   name        String
   email       String   @unique
-  phoneNumber String?
+  phoneNumber String
   industry    String?
 
-  isActive    Boolean  @default(true)
+  isActive Boolean @default(true)
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
