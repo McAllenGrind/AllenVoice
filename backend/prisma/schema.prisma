@@ -13,9 +13,36 @@ model Company {
   email       String   @unique
   phoneNumber String
   industry    String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  isActive Boolean @default(true)
+  user            User?
+  aiConfiguration AIConfiguration?
+}
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model User {
+  id           String   @id @default(uuid())
+  fullName     String
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  companyId String  @unique
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+model AIConfiguration {
+  id             String   @id @default(uuid())
+  systemPrompt   String
+  language       String   @default("fr")
+  voice          String   @default("default")
+  welcomeMessage String   @default("Bonjour, comment puis-je vous aider ?")
+  temperature    Float    @default(0.3)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  companyId String  @unique
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 }

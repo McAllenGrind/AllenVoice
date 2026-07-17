@@ -3,4 +3,6 @@ export interface CreateCompanyInput {
   email: string;
   phoneNumber: string;
   industry?: string;
+  ownerFullName: string;
+  password: string;
 }
