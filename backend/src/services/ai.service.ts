@@ -172,17 +172,24 @@ async function recordEvaluationSafely(
   }
 }
 
+interface AskAIOptions {
+  recordEvaluation?: boolean;
+}
+
 export const aiService = {
   async ask(
-    companyId: string,
-    input: AskAIInput,
-  ) {
+  companyId: string,
+  input: AskAIInput,
+  options: AskAIOptions = {},
+) {
     const prepared = await prepareRequest(
       companyId,
       input.question,
     );
 
     const provider = parseProvider(input.provider);
+    const shouldRecordEvaluation =
+  options.recordEvaluation ?? true;
 
     try {
       const result = await runProvider(
@@ -191,44 +198,46 @@ export const aiService = {
         prepared.question,
       );
 
-      await recordEvaluationSafely({
-        companyId,
-        question: prepared.question,
-        mode: AIEvaluationMode.ASK,
+      if (shouldRecordEvaluation) {
+  await recordEvaluationSafely({
+    companyId,
+    question: prepared.question,
+    mode: AIEvaluationMode.ASK,
 
-        results: [
-          {
-            provider:
-              toDatabaseProvider(result.provider),
-
-            model: result.model,
-            answer: result.answer,
-            latencyMs: result.latencyMs,
-            inputTokens: result.inputTokens,
-            outputTokens: result.outputTokens,
-            status: AIEvaluationStatus.SUCCESS,
-          },
-        ],
-      });
+    results: [
+      {
+        provider:
+          toDatabaseProvider(result.provider),
+        model: result.model,
+        answer: result.answer,
+        latencyMs: result.latencyMs,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        status: AIEvaluationStatus.SUCCESS,
+      },
+    ],
+  });
+}
 
       return result;
     } catch (error) {
-      await recordEvaluationSafely({
-        companyId,
-        question: prepared.question,
-        mode: AIEvaluationMode.ASK,
+      if (shouldRecordEvaluation) {
+  await recordEvaluationSafely({
+    companyId,
+    question: prepared.question,
+    mode: AIEvaluationMode.ASK,
 
-        results: [
-          {
-            provider:
-              toDatabaseProvider(provider),
-
-            model: getProviderModel(provider),
-            status: AIEvaluationStatus.ERROR,
-            errorMessage: getErrorMessage(error),
-          },
-        ],
-      });
+    results: [
+      {
+        provider:
+          toDatabaseProvider(provider),
+        model: getProviderModel(provider),
+        status: AIEvaluationStatus.ERROR,
+        errorMessage: getErrorMessage(error),
+      },
+    ],
+  });
+}
 
       throw error;
     }

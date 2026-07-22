@@ -11,6 +11,8 @@ import type {
 
 import { aiService } from "../services/ai.service.js";
 
+import { voiceCallService } from "../services/voice-call.service.js";
+
 const VOICE_LANGUAGE = "fr-CA";
 
 interface TwilioSpeechBody {
@@ -19,6 +21,26 @@ interface TwilioSpeechBody {
   CallSid?: string;
   From?: string;
   To?: string;
+  CallStatus?: string;
+  CallDuration?: string;
+}
+
+async function runHistorySafely(
+  description: string,
+  action: () => Promise<unknown>,
+): Promise<void> {
+  try {
+    await action();
+  } catch (error) {
+    /*
+     * Une erreur d’historique ne doit pas
+     * interrompre la conversation téléphonique.
+     */
+    console.error(
+      `ERREUR HISTORIQUE VOCAL — ${description} :`,
+      error,
+    );
+  }
 }
 
 function sendTwiml(
@@ -86,6 +108,7 @@ function getVoiceProvider(): AIProvider {
   return "ANTHROPIC";
 }
 
+
 function normalizeSpeech(value: string): string {
   return value
     // Sépare les lettres et les accents.
@@ -149,10 +172,40 @@ function isEndOfCallRequest(
   );
 }
 
-export function handleIncomingCall(
-  _req: Request,
+export async function handleIncomingCall(
+  req: Request,
   res: Response,
-): void {
+): Promise<void> {
+  const body =
+    req.body as TwilioSpeechBody;
+
+  const callSid =
+    body.CallSid?.trim();
+
+  const companyId =
+    getVoiceCompanyId();
+
+  const provider =
+    getVoiceProvider();
+
+  if (callSid) {
+    await runHistorySafely(
+      "création de l’appel",
+      () =>
+        voiceCallService.start({
+          companyId,
+          twilioCallSid: callSid,
+          fromNumber: body.From,
+          toNumber: body.To,
+          provider,
+        }),
+    );
+  } else {
+    console.warn(
+      "Twilio n’a pas envoyé de CallSid.",
+    );
+  }
+
   const twiml =
     new twilio.twiml.VoiceResponse();
 
@@ -173,6 +226,33 @@ export async function processSpeech(
   const question =
     body.SpeechResult?.trim() ?? "";
 
+    const callSid =
+  body.CallSid?.trim();
+
+const companyId =
+  getVoiceCompanyId();
+
+const provider =
+  getVoiceProvider();
+
+if (callSid) {
+  /*
+   * Cette opération garantit que l’appel existe,
+   * même si la création initiale avait échoué.
+   */
+  await runHistorySafely(
+    "vérification de l’appel",
+    () =>
+      voiceCallService.start({
+        companyId,
+        twilioCallSid: callSid,
+        fromNumber: body.From,
+        toNumber: body.To,
+        provider,
+      }),
+  );
+}
+
   console.log("APPEL TWILIO :", {
     callSid: body.CallSid,
     from: body.From,
@@ -190,35 +270,66 @@ export async function processSpeech(
    * une boucle silencieuse et des frais inutiles.
    */
   if (!question) {
-    twiml.say(
-      {
-        language: VOICE_LANGUAGE,
-      },
-      "Je n’ai rien entendu. Merci d’avoir appelé la Clinique Allen. Au revoir.",
+  if (callSid) {
+    await runHistorySafely(
+      "fin de l’appel sans parole",
+      () =>
+        voiceCallService.complete(
+          callSid,
+        ),
     );
-
-    twiml.hangup();
-
-    sendTwiml(res, twiml);
-    return;
   }
+
+  twiml.say(
+    {
+      language: VOICE_LANGUAGE,
+    },
+    "Je n’ai rien entendu. Merci d’avoir appelé la Clinique Allen. Au revoir.",
+  );
+
+  twiml.hangup();
+
+  sendTwiml(res, twiml);
+  return;
+}
+if (callSid) {
+  await runHistorySafely(
+    "message du client",
+    () =>
+      voiceCallService.recordCustomerMessage(
+        callSid,
+        question,
+        body.Confidence,
+      ),
+  );
+}
 
   /*
    * Le client veut terminer la conversation.
    */
   if (isEndOfCallRequest(question)) {
-    twiml.say(
-      {
-        language: VOICE_LANGUAGE,
-      },
-      "Merci d’avoir appelé la Clinique Allen. Au revoir.",
+  if (callSid) {
+    await runHistorySafely(
+      "fin volontaire de l’appel",
+      () =>
+        voiceCallService.complete(
+          callSid,
+        ),
     );
-
-    twiml.hangup();
-
-    sendTwiml(res, twiml);
-    return;
   }
+
+  twiml.say(
+    {
+      language: VOICE_LANGUAGE,
+    },
+    "Merci d’avoir appelé la Clinique Allen. Au revoir.",
+  );
+
+  twiml.hangup();
+
+  sendTwiml(res, twiml);
+  return;
+}
 
   try {
     const companyId = getVoiceCompanyId();
@@ -230,7 +341,21 @@ export async function processSpeech(
         question,
         provider,
       },
+      {
+        recordEvaluation: false,
+      },
     );
+
+    if (callSid) {
+  await runHistorySafely(
+    "réponse de l’agent",
+    () =>
+      voiceCallService.recordAgentMessage(
+        callSid,
+        result,
+      ),
+  );
+}
 
     /*
      * Twilio prononce la réponse générée
@@ -270,4 +395,40 @@ export async function processSpeech(
   }
 
   sendTwiml(res, twiml);
+}
+
+export async function handleCallStatus(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const body =
+    req.body as TwilioSpeechBody;
+
+  const callSid =
+    body.CallSid?.trim();
+
+  console.log("STATUT APPEL TWILIO :", {
+    callSid,
+    status: body.CallStatus,
+    durationSeconds:
+      body.CallDuration,
+  });
+
+  if (callSid) {
+    await runHistorySafely(
+      "mise à jour du statut Twilio",
+      () =>
+        voiceCallService.updateFromTwilioStatus(
+          callSid,
+          body.CallStatus,
+          body.CallDuration,
+        ),
+    );
+  }
+
+  /*
+   * Un webhook de statut est informatif.
+   * Twilio attend simplement une réponse HTTP réussie.
+   */
+  res.sendStatus(200);
 }

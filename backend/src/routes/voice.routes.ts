@@ -1,6 +1,7 @@
 import { Router } from "express";
 
 import {
+  handleCallStatus,
   handleIncomingCall,
   processSpeech,
 } from "../controllers/voice.controller.js";
@@ -15,6 +16,11 @@ voiceRouter.post(
 voiceRouter.post(
   "/process-speech",
   processSpeech,
+);
+
+voiceRouter.post(
+  "/status",
+  handleCallStatus,
 );
 
 export default voiceRouter;
