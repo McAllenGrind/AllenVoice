@@ -35,8 +35,9 @@ export async function createKnowledgeDocument(
   try {
     const auth = getAuth(res);
 
-    const input =
-      req.body as CreateKnowledgeDocumentInput;
+    const input = (
+        req.body ?? {}
+    ) as CreateKnowledgeDocumentInput;
 
     const document = await knowledgeService.create(
       auth.companyId,
@@ -101,8 +102,9 @@ export async function updateKnowledgeDocument(
   try {
     const auth = getAuth(res);
 
-    const input =
-      req.body as UpdateKnowledgeDocumentInput;
+    const input = (
+        req.body ?? {}
+    ) as CreateKnowledgeDocumentInput;
 
     const document = await knowledgeService.update(
       req.params.id,

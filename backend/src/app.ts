@@ -5,6 +5,7 @@ import { errorMiddleware } from "./middlewares/error.middleware.js";
 import companyRouter from "./routes/company.routes.js";
 import authRouter from "./routes/auth.routes.js";
 import knowledgeRouter from "./routes/knowledge.routes.js";
+import aiRouter from "./routes/ai.routes.js";
 
 const app = express();
 
@@ -40,6 +41,7 @@ app.get("/health/database", async (_req, res) => {
 app.use("/companies", companyRouter);
 app.use("/auth", authRouter);
 app.use("/knowledge", knowledgeRouter);
+app.use("/ai", aiRouter);
 
 
 // Toujours placer le middleware d’erreurs après les routes.

@@ -1,17 +1,25 @@
 import type {
-  ErrorRequestHandler,
   NextFunction,
   Request,
   Response,
 } from "express";
+
 import { AppError } from "../utils/app-error.js";
 
-export const errorMiddleware: ErrorRequestHandler = (
+export function errorMiddleware(
   error: unknown,
   _req: Request,
   res: Response,
   _next: NextFunction,
-): void => {
+): void {
+  if (error instanceof Error) {
+    console.error("ERREUR BACKEND :", error.name);
+    console.error("MESSAGE :", error.message);
+    console.error(error.stack);
+  } else {
+    console.error("ERREUR BACKEND :", error);
+  }
+
   if (error instanceof AppError) {
     res.status(error.statusCode).json({
       error: error.message,
@@ -20,9 +28,7 @@ export const errorMiddleware: ErrorRequestHandler = (
     return;
   }
 
-  console.error("Unhandled error:", error);
-
   res.status(500).json({
     error: "Une erreur interne est survenue.",
   });
-};
+}
