@@ -1,3 +1,11 @@
+import {
+  AIEvaluationMode,
+  AIEvaluationStatus,
+  AIProviderType,
+} from "@prisma/client";
+
+import { aiRuntimeConfig } from "../config/ai-runtime.js";
+
 import type {
   AIComparisonFailure,
   AIProvider,
@@ -5,7 +13,9 @@ import type {
   AskAIInput,
 } from "../models/ai.types.js";
 
+import { aiEvaluationRepository } from "../repositories/ai-evaluation.repository.js";
 import { aiRepository } from "../repositories/ai.repository.js";
+
 import { AppError } from "../utils/app-error.js";
 import { generateWithAnthropic } from "./ai/anthropic.provider.js";
 import { generateWithOpenAI } from "./ai/openai.provider.js";
@@ -110,17 +120,56 @@ async function runProvider(
   });
 }
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error
+    ? error.message
+    : "Erreur inconnue du fournisseur.";
+}
+
 function formatFailure(
   provider: AIProvider,
   reason: unknown,
 ): AIComparisonFailure {
   return {
     provider,
-    error:
-      reason instanceof Error
-        ? reason.message
-        : "Erreur inconnue du fournisseur.",
+    error: getErrorMessage(reason),
   };
+}
+
+function toDatabaseProvider(
+  provider: AIProvider,
+): AIProviderType {
+  return provider === "OPENAI"
+    ? AIProviderType.OPENAI
+    : AIProviderType.ANTHROPIC;
+}
+
+function getProviderModel(
+  provider: AIProvider,
+): string {
+  return provider === "OPENAI"
+    ? aiRuntimeConfig.openAIModel
+    : aiRuntimeConfig.anthropicModel;
+}
+
+/*
+ * L’historique ne doit pas empêcher l’IA de répondre.
+ * Si l’enregistrement échoue, l’erreur apparaît dans
+ * le terminal, mais la réponse IA reste disponible.
+ */
+async function recordEvaluationSafely(
+  input: Parameters<
+    typeof aiEvaluationRepository.create
+  >[0],
+): Promise<void> {
+  try {
+    await aiEvaluationRepository.create(input);
+  } catch (error) {
+    console.error(
+      "Impossible d’enregistrer l’évaluation IA :",
+      error,
+    );
+  }
 }
 
 export const aiService = {
@@ -135,11 +184,54 @@ export const aiService = {
 
     const provider = parseProvider(input.provider);
 
-    return runProvider(
-      provider,
-      prepared.systemPrompt,
-      prepared.question,
-    );
+    try {
+      const result = await runProvider(
+        provider,
+        prepared.systemPrompt,
+        prepared.question,
+      );
+
+      await recordEvaluationSafely({
+        companyId,
+        question: prepared.question,
+        mode: AIEvaluationMode.ASK,
+
+        results: [
+          {
+            provider:
+              toDatabaseProvider(result.provider),
+
+            model: result.model,
+            answer: result.answer,
+            latencyMs: result.latencyMs,
+            inputTokens: result.inputTokens,
+            outputTokens: result.outputTokens,
+            status: AIEvaluationStatus.SUCCESS,
+          },
+        ],
+      });
+
+      return result;
+    } catch (error) {
+      await recordEvaluationSafely({
+        companyId,
+        question: prepared.question,
+        mode: AIEvaluationMode.ASK,
+
+        results: [
+          {
+            provider:
+              toDatabaseProvider(provider),
+
+            model: getProviderModel(provider),
+            status: AIEvaluationStatus.ERROR,
+            errorMessage: getErrorMessage(error),
+          },
+        ],
+      });
+
+      throw error;
+    }
   },
 
   async compare(
@@ -165,6 +257,66 @@ export const aiService = {
           prepared.question,
         ),
       ]);
+
+    await recordEvaluationSafely({
+      companyId,
+      question: prepared.question,
+      mode: AIEvaluationMode.COMPARE,
+
+      results: [
+        openAIResult.status === "fulfilled"
+          ? {
+              provider: AIProviderType.OPENAI,
+              model: openAIResult.value.model,
+              answer: openAIResult.value.answer,
+              latencyMs:
+                openAIResult.value.latencyMs,
+              inputTokens:
+                openAIResult.value.inputTokens,
+              outputTokens:
+                openAIResult.value.outputTokens,
+              status:
+                AIEvaluationStatus.SUCCESS,
+            }
+          : {
+              provider: AIProviderType.OPENAI,
+              model:
+                aiRuntimeConfig.openAIModel,
+              status: AIEvaluationStatus.ERROR,
+              errorMessage: getErrorMessage(
+                openAIResult.reason,
+              ),
+            },
+
+        anthropicResult.status === "fulfilled"
+          ? {
+              provider:
+                AIProviderType.ANTHROPIC,
+              model:
+                anthropicResult.value.model,
+              answer:
+                anthropicResult.value.answer,
+              latencyMs:
+                anthropicResult.value.latencyMs,
+              inputTokens:
+                anthropicResult.value.inputTokens,
+              outputTokens:
+                anthropicResult.value.outputTokens,
+              status:
+                AIEvaluationStatus.SUCCESS,
+            }
+          : {
+              provider:
+                AIProviderType.ANTHROPIC,
+              model:
+                aiRuntimeConfig.anthropicModel,
+              status: AIEvaluationStatus.ERROR,
+              errorMessage: getErrorMessage(
+                anthropicResult.reason,
+              ),
+            },
+      ],
+    });
 
     return {
       question: prepared.question,

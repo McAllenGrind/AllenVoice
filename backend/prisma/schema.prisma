@@ -20,6 +20,8 @@ model Company {
   user            User?
   aiConfiguration AIConfiguration?
   knowledgeBase   KnowledgeBase?
+
+  aiEvaluations AIEvaluation[]
 }
 
 model User {
@@ -54,6 +56,20 @@ enum KnowledgeSourceType {
   PDF
   WORD
 }
+enum AIEvaluationMode {
+  ASK
+  COMPARE
+}
+
+enum AIEvaluationStatus {
+  SUCCESS
+  ERROR
+}
+
+enum AIProviderType {
+  OPENAI
+  ANTHROPIC
+}
 
 model KnowledgeBase {
   id        String   @id @default(uuid())
@@ -80,4 +96,37 @@ model KnowledgeDocument {
   knowledgeBase   KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
 
   @@index([knowledgeBaseId])
+}
+
+model AIEvaluation {
+  id        String           @id @default(uuid())
+  question  String
+  mode      AIEvaluationMode
+  createdAt DateTime         @default(now())
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  results AIModelResult[]
+
+  @@index([companyId, createdAt])
+}
+
+model AIModelResult {
+  id           String             @id @default(uuid())
+  provider     AIProviderType
+  model        String
+  answer       String?
+  latencyMs    Int?
+  inputTokens  Int?
+  outputTokens Int?
+  status       AIEvaluationStatus
+  errorMessage String?
+  createdAt    DateTime           @default(now())
+
+  evaluationId String
+  evaluation   AIEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+
+  @@index([evaluationId])
+  @@index([provider, createdAt])
 }
