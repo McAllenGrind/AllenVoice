@@ -1,17 +1,18 @@
 import type {
+  NextFunction,
   Request,
   Response,
 } from "express";
 
 import twilio from "twilio";
 
-import type {
-  AIProvider,
-} from "../models/ai.types.js";
+import type { AIProvider, } from "../models/ai.types.js";
 
 import { aiService } from "../services/ai.service.js";
 
 import { voiceCallService } from "../services/voice-call.service.js";
+
+import { AppError } from "../utils/app-error.js";
 
 const VOICE_LANGUAGE = "fr-CA";
 
@@ -431,4 +432,70 @@ export async function handleCallStatus(
    * Twilio attend simplement une réponse HTTP réussie.
    */
   res.sendStatus(200);
+}
+
+
+export async function listVoiceCalls(
+  _req: Request,
+  res: Response,
+  next: import("express").NextFunction,
+): Promise<void> {
+  try {
+    const auth =
+      res.locals.auth as {
+        companyId: string;
+      };
+
+    const calls =
+      await voiceCallService.list(
+        auth.companyId,
+      );
+
+    res.status(200).json({
+      data: calls,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getVoiceCall(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const auth =
+      res.locals.auth as {
+        companyId: string;
+      };
+
+    const id = req.params.id;
+
+    /*
+     * TypeScript veut qu'on vérifie que :id
+     * est bien une chaîne avant de l'utiliser.
+     */
+    if (
+      typeof id !== "string" ||
+      !id.trim()
+    ) {
+      throw new AppError(
+        400,
+        "Identifiant d’appel invalide.",
+      );
+    }
+
+    const call =
+      await voiceCallService.getById(
+        id,
+        auth.companyId,
+      );
+
+    res.status(200).json({
+      data: call,
+    });
+  } catch (error) {
+    next(error);
+  }
 }

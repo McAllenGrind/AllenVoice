@@ -117,4 +117,46 @@ export const voiceCallRepository = {
       },
     });
   },
+
+  listByCompany(companyId: string) {
+    return prisma.voiceCall.findMany({
+      where: {
+        companyId,
+      },
+
+      orderBy: {
+        startedAt: "desc",
+      },
+
+      take: 50,
+
+      include: {
+        _count: {
+          select: {
+            messages: true,
+          },
+        },
+      },
+    });
+  },
+
+  findByIdForCompany(
+    id: string,
+    companyId: string,
+  ) {
+    return prisma.voiceCall.findFirst({
+      where: {
+        id,
+        companyId,
+      },
+
+      include: {
+        messages: {
+          orderBy: {
+            createdAt: "asc",
+          },
+        },
+      },
+    });
+  },
 };

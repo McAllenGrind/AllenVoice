@@ -9,6 +9,7 @@ import type {
 } from "../models/ai.types.js";
 
 import { voiceCallRepository } from "../repositories/voice-call.repository.js";
+import { AppError } from "../utils/app-error.js";
 
 interface StartVoiceCallInput {
   companyId: string;
@@ -126,10 +127,6 @@ export const voiceCallService = {
     const status =
       getFinalStatus(twilioStatus);
 
-    /*
-     * On ne termine pas l’appel pour les statuts
-     * intermédiaires comme ringing ou in-progress.
-     */
     if (
       status ===
       VoiceCallStatus.IN_PROGRESS
@@ -143,5 +140,31 @@ export const voiceCallService = {
       durationSeconds:
         parseOptionalNumber(durationValue),
     });
+  },
+
+  list(companyId: string) {
+    return voiceCallRepository.listByCompany(
+      companyId,
+    );
+  },
+
+  async getById(
+    id: string,
+    companyId: string,
+  ) {
+    const call =
+      await voiceCallRepository.findByIdForCompany(
+        id,
+        companyId,
+      );
+
+    if (!call) {
+      throw new AppError(
+        404,
+        "Appel introuvable.",
+      );
+    }
+
+    return call;
   },
 };
