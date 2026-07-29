@@ -16,6 +16,8 @@ import { AppError } from "../utils/app-error.js";
 
 import { agentService } from "../services/agent.service.js";
 
+import { voiceRoutingService } from "../services/voice-routing.service.js";
+
 const VOICE_LANGUAGE = "fr-CA";
 
 interface TwilioSpeechBody {
@@ -59,43 +61,23 @@ function sendTwiml(
 function addSpeechGather(
   twiml: twilio.twiml.VoiceResponse,
   prompt: string,
-): void {
+) {
   const gather = twiml.gather({
     input: ["speech"],
     action: "/voice/process-speech",
     method: "POST",
-    language: VOICE_LANGUAGE,
-
-    // Attend jusqu’à 5 secondes que la personne commence.
+    language: "fr-CA",
     timeout: 5,
-
-    // Attend 1 secondes après une pause avant
-    // de considérer que la personne a terminé.
     speechTimeout: "1",
-
-    // Appelle process-speech même si rien n’a été entendu.
     actionOnEmptyResult: true,
   });
 
   gather.say(
     {
-      language: VOICE_LANGUAGE,
+      language: "fr-CA",
     },
     prompt,
   );
-}
-
-function getVoiceCompanyId(): string {
-  const companyId =
-    process.env.VOICE_COMPANY_ID?.trim();
-
-  if (!companyId) {
-    throw new Error(
-      "VOICE_COMPANY_ID n’est pas configuré.",
-    );
-  }
-
-  return companyId;
 }
 
 function getVoiceProvider(): AIProvider {
@@ -179,14 +161,34 @@ export async function handleIncomingCall(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const body =
-    req.body as TwilioSpeechBody;
+const body =
+  req.body as TwilioSpeechBody;
 
-  const callSid =
-    body.CallSid?.trim();
+const callSid =
+  body.CallSid?.trim() ?? "";
 
-  const companyId =
-    getVoiceCompanyId();
+const toNumber =
+  body.To?.trim() ?? "";
+
+if (!callSid) {
+  throw new Error(
+    "CallSid Twilio manquant.",
+  );
+}
+
+if (!toNumber) {
+  throw new Error(
+    "Numéro appelé manquant.",
+  );
+}
+
+const company =
+  await voiceRoutingService.getCompanyByPhoneNumber(
+    toNumber,
+  );
+
+const companyId = company.id;
+
 
   const agentConfiguration =
   await agentService.getConfiguration(
@@ -234,11 +236,24 @@ export async function processSpeech(
   const question =
     body.SpeechResult?.trim() ?? "";
 
-    const callSid =
-  body.CallSid?.trim();
+const callSid =
+  body.CallSid?.trim() ?? "";
+
+if (!callSid) {
+  throw new Error(
+    "CallSid Twilio manquant.",
+  );
+}
 
 const companyId =
-  getVoiceCompanyId();
+  await voiceCallService.getCompanyIdByCallSid(
+    callSid,
+  );
+
+const agentConfiguration =
+  await agentService.getConfiguration(
+    companyId,
+  );
 
 const provider =
   getVoiceProvider();
@@ -340,7 +355,6 @@ if (callSid) {
 }
 
   try {
-    const companyId = getVoiceCompanyId();
     const provider = getVoiceProvider();
 
     const result = await aiService.ask(
@@ -380,9 +394,9 @@ if (callSid) {
      * Puis Twilio écoute une nouvelle question.
      */
     addSpeechGather(
-      twiml,
-      "Avez-vous une autre question ? Vous pouvez dire c’est tout pour terminer l’appel.",
-    );
+  twiml,
+  `${result.answer} Avez-vous une autre question ? Vous pouvez dire c’est tout pour terminer l’appel.`,
+);
   } catch (error) {
     console.error(
       "ERREUR AGENT VOCAL :",
@@ -397,9 +411,9 @@ if (callSid) {
     );
 
     addSpeechGather(
-      twiml,
-      "Vous pouvez reformuler votre question.",
-    );
+  twiml,
+  "Je n’ai pas compris votre question. Vous pouvez reformuler votre question.",
+);
   }
 
   sendTwiml(res, twiml);

@@ -140,6 +140,22 @@ export const voiceCallRepository = {
     });
   },
 
+  findByTwilioCallSid(
+  twilioCallSid: string,
+) {
+  return prisma.voiceCall.findUnique({
+    where: {
+      twilioCallSid,
+    },
+
+    select: {
+      id: true,
+      companyId: true,
+      twilioCallSid: true,
+    },
+  });
+},
+
   findByIdForCompany(
     id: string,
     companyId: string,

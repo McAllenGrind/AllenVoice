@@ -167,4 +167,22 @@ export const voiceCallService = {
 
     return call;
   },
+
+  async getCompanyIdByCallSid(
+    twilioCallSid: string,
+  ) {
+    const call =
+      await voiceCallRepository.findByTwilioCallSid(
+        twilioCallSid,
+      );
+
+    if (!call) {
+      throw new AppError(
+        404,
+        "Appel AllenVoice introuvable.",
+      );
+    }
+
+    return call.companyId;
+  },
 };

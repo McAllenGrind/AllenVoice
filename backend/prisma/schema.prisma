@@ -12,6 +12,7 @@ model Company {
   name        String
   email       String   @unique
   phoneNumber String
+  voicePhoneNumber String? @unique
   industry    String?
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())

@@ -10,6 +10,16 @@ export const companyRepository = {
     });
   },
 
+  findByVoicePhoneNumber(
+  voicePhoneNumber: string,
+) {
+  return prisma.company.findUnique({
+    where: {
+      voicePhoneNumber,
+    },
+  });
+},
+
   create(data: Prisma.CompanyCreateInput) {
     return prisma.company.create({
       data,
