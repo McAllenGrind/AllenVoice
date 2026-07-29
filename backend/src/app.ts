@@ -8,6 +8,8 @@ import knowledgeRouter from "./routes/knowledge.routes.js";
 import aiRouter from "./routes/ai.routes.js";
 import voiceRouter from "./routes/voice.routes.js";
 import { agentRouter } from "./routes/agent.routes.js";
+import { accountRouter } from "./routes/account.routes.js";
+import { voiceRelayRouter,} from "./routes/voice-relay.routes.js";
 
 const app = express();
 
@@ -52,6 +54,8 @@ app.use("/knowledge", knowledgeRouter);
 app.use("/ai", aiRouter);
 app.use("/voice", voiceRouter);
 app.use("/agent", agentRouter);
+app.use("/account", accountRouter);
+app.use("/voice/relay", voiceRelayRouter,);
 
 
 // Toujours placer le middleware d’erreurs après les routes.

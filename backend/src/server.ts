@@ -1,8 +1,27 @@
 import "dotenv/config";
 import app from "./app.js";
+import {
+  createServer,
+} from "node:http";
 
-const PORT = process.env.PORT || 3000;
+import {
+  registerConversationRelayWebSocket,
+} from "./websockets/conversation-relay.websocket.js";
 
-app.listen(PORT, () => {
-  console.log(`🚀 AllenVoice API running on http://localhost:${PORT}`);
-});
+const port = process.env.PORT || 3000;
+
+const server =
+  createServer(app);
+
+registerConversationRelayWebSocket(
+  server,
+);
+
+server.listen(
+  port,
+  () => {
+    console.log(
+      `Serveur HTTP + WebSocket lancé sur le port ${port}`,
+    );
+  },
+);
