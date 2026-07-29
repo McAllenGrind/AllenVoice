@@ -14,6 +14,8 @@ import { voiceCallService } from "../services/voice-call.service.js";
 
 import { AppError } from "../utils/app-error.js";
 
+import { agentService } from "../services/agent.service.js";
+
 const VOICE_LANGUAGE = "fr-CA";
 
 interface TwilioSpeechBody {
@@ -186,6 +188,11 @@ export async function handleIncomingCall(
   const companyId =
     getVoiceCompanyId();
 
+  const agentConfiguration =
+  await agentService.getConfiguration(
+    companyId,
+  );
+
   const provider =
     getVoiceProvider();
 
@@ -208,14 +215,14 @@ export async function handleIncomingCall(
   }
 
   const twiml =
-    new twilio.twiml.VoiceResponse();
+  new twilio.twiml.VoiceResponse();
 
-  addSpeechGather(
-    twiml,
-    "Bonjour et bienvenue à la Clinique Allen. Je suis votre assistant virtuel. Comment puis-je vous aider ?",
-  );
+addSpeechGather(
+  twiml,
+  agentConfiguration.welcomeMessage,
+);
 
-  sendTwiml(res, twiml);
+sendTwiml(res, twiml);
 }
 
 export async function processSpeech(
