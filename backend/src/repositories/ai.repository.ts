@@ -14,8 +14,9 @@ export const aiRepository = {
 
         aiConfiguration: {
           select: {
-            systemPrompt: true,
+            agentName: true,
             language: true,
+            systemPrompt: true,
           },
         },
 

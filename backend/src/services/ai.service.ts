@@ -17,8 +17,15 @@ import { aiEvaluationRepository } from "../repositories/ai-evaluation.repository
 import { aiRepository } from "../repositories/ai.repository.js";
 
 import { AppError } from "../utils/app-error.js";
-import { generateWithAnthropic } from "./ai/anthropic.provider.js";
-import { generateWithOpenAI } from "./ai/openai.provider.js";
+import {
+  generateWithAnthropic,
+  streamWithAnthropic,
+} from "./ai/anthropic.provider.js";
+
+import {
+  generateWithOpenAI,
+  streamWithOpenAI,
+} from "./ai/openai.provider.js";
 import { buildAgentSystemPrompt } from "./ai-prompt.service.js";
 
 function parseProvider(
@@ -90,9 +97,16 @@ async function prepareRequest(
 
   const systemPrompt = buildAgentSystemPrompt({
     companyName: company.name,
-    language: company.aiConfiguration.language,
+
+    agentName:
+      company.aiConfiguration.agentName,
+
+    language:
+      company.aiConfiguration.language,
+
     customSystemPrompt:
       company.aiConfiguration.systemPrompt,
+
     documents,
   });
 
@@ -117,6 +131,29 @@ async function runProvider(
   return generateWithOpenAI({
     systemPrompt,
     question,
+  });
+}
+
+async function runProviderStream(
+  provider: AIProvider,
+  systemPrompt: string,
+  question: string,
+  onTextDelta: (
+    delta: string,
+  ) => void | Promise<void>,
+): Promise<AIProviderResult> {
+  if (provider === "ANTHROPIC") {
+    return streamWithAnthropic({
+      systemPrompt,
+      question,
+      onTextDelta,
+    });
+  }
+
+  return streamWithOpenAI({
+    systemPrompt,
+    question,
+    onTextDelta,
   });
 }
 
@@ -176,12 +213,19 @@ interface AskAIOptions {
   recordEvaluation?: boolean;
 }
 
+interface StreamAIOptions
+  extends AskAIOptions {
+  onTextDelta: (
+    delta: string,
+  ) => void | Promise<void>;
+}
+
 export const aiService = {
   async ask(
-  companyId: string,
-  input: AskAIInput,
-  options: AskAIOptions = {},
-) {
+    companyId: string,
+    input: AskAIInput,
+    options: AskAIOptions = {},
+  ) {
     const prepared = await prepareRequest(
       companyId,
       input.question,
@@ -189,7 +233,7 @@ export const aiService = {
 
     const provider = parseProvider(input.provider);
     const shouldRecordEvaluation =
-  options.recordEvaluation ?? true;
+      options.recordEvaluation ?? true;
 
     try {
       const result = await runProvider(
@@ -199,45 +243,145 @@ export const aiService = {
       );
 
       if (shouldRecordEvaluation) {
-  await recordEvaluationSafely({
-    companyId,
-    question: prepared.question,
-    mode: AIEvaluationMode.ASK,
+        await recordEvaluationSafely({
+          companyId,
+          question: prepared.question,
+          mode: AIEvaluationMode.ASK,
 
-    results: [
-      {
-        provider:
-          toDatabaseProvider(result.provider),
-        model: result.model,
-        answer: result.answer,
-        latencyMs: result.latencyMs,
-        inputTokens: result.inputTokens,
-        outputTokens: result.outputTokens,
-        status: AIEvaluationStatus.SUCCESS,
-      },
-    ],
-  });
-}
+          results: [
+            {
+              provider:
+                toDatabaseProvider(result.provider),
+              model: result.model,
+              answer: result.answer,
+              latencyMs: result.latencyMs,
+              inputTokens: result.inputTokens,
+              outputTokens: result.outputTokens,
+              status: AIEvaluationStatus.SUCCESS,
+            },
+          ],
+        });
+      }
 
       return result;
     } catch (error) {
       if (shouldRecordEvaluation) {
-  await recordEvaluationSafely({
-    companyId,
-    question: prepared.question,
-    mode: AIEvaluationMode.ASK,
+        await recordEvaluationSafely({
+          companyId,
+          question: prepared.question,
+          mode: AIEvaluationMode.ASK,
 
-    results: [
-      {
-        provider:
-          toDatabaseProvider(provider),
-        model: getProviderModel(provider),
-        status: AIEvaluationStatus.ERROR,
-        errorMessage: getErrorMessage(error),
-      },
-    ],
-  });
-}
+          results: [
+            {
+              provider:
+                toDatabaseProvider(provider),
+              model: getProviderModel(provider),
+              status: AIEvaluationStatus.ERROR,
+              errorMessage: getErrorMessage(error),
+            },
+          ],
+        });
+      }
+
+      throw error;
+    }
+  },
+
+  async stream(
+    companyId: string,
+    input: AskAIInput,
+    options: StreamAIOptions,
+  ): Promise<AIProviderResult> {
+    const prepared =
+      await prepareRequest(
+        companyId,
+        input.question,
+      );
+
+    const provider =
+      parseProvider(
+        input.provider,
+      );
+
+    const shouldRecordEvaluation =
+      options.recordEvaluation ??
+      true;
+
+    try {
+      const result =
+        await runProviderStream(
+          provider,
+          prepared.systemPrompt,
+          prepared.question,
+          options.onTextDelta,
+        );
+
+      if (shouldRecordEvaluation) {
+        await recordEvaluationSafely({
+          companyId,
+          question:
+            prepared.question,
+          mode:
+            AIEvaluationMode.ASK,
+
+          results: [
+            {
+              provider:
+                toDatabaseProvider(
+                  result.provider,
+                ),
+
+              model: result.model,
+              answer: result.answer,
+              latencyMs:
+                result.latencyMs,
+              inputTokens:
+                result.inputTokens,
+              outputTokens:
+                result.outputTokens,
+
+              status:
+                AIEvaluationStatus
+                  .SUCCESS,
+            },
+          ],
+        });
+      }
+
+      return result;
+    } catch (error) {
+      if (shouldRecordEvaluation) {
+        await recordEvaluationSafely({
+          companyId,
+          question:
+            prepared.question,
+          mode:
+            AIEvaluationMode.ASK,
+
+          results: [
+            {
+              provider:
+                toDatabaseProvider(
+                  provider,
+                ),
+
+              model:
+                getProviderModel(
+                  provider,
+                ),
+
+              status:
+                AIEvaluationStatus
+                  .ERROR,
+
+              errorMessage:
+                getErrorMessage(
+                  error,
+                ),
+            },
+          ],
+        });
+      }
 
       throw error;
     }
@@ -275,55 +419,55 @@ export const aiService = {
       results: [
         openAIResult.status === "fulfilled"
           ? {
-              provider: AIProviderType.OPENAI,
-              model: openAIResult.value.model,
-              answer: openAIResult.value.answer,
-              latencyMs:
-                openAIResult.value.latencyMs,
-              inputTokens:
-                openAIResult.value.inputTokens,
-              outputTokens:
-                openAIResult.value.outputTokens,
-              status:
-                AIEvaluationStatus.SUCCESS,
-            }
+            provider: AIProviderType.OPENAI,
+            model: openAIResult.value.model,
+            answer: openAIResult.value.answer,
+            latencyMs:
+              openAIResult.value.latencyMs,
+            inputTokens:
+              openAIResult.value.inputTokens,
+            outputTokens:
+              openAIResult.value.outputTokens,
+            status:
+              AIEvaluationStatus.SUCCESS,
+          }
           : {
-              provider: AIProviderType.OPENAI,
-              model:
-                aiRuntimeConfig.openAIModel,
-              status: AIEvaluationStatus.ERROR,
-              errorMessage: getErrorMessage(
-                openAIResult.reason,
-              ),
-            },
+            provider: AIProviderType.OPENAI,
+            model:
+              aiRuntimeConfig.openAIModel,
+            status: AIEvaluationStatus.ERROR,
+            errorMessage: getErrorMessage(
+              openAIResult.reason,
+            ),
+          },
 
         anthropicResult.status === "fulfilled"
           ? {
-              provider:
-                AIProviderType.ANTHROPIC,
-              model:
-                anthropicResult.value.model,
-              answer:
-                anthropicResult.value.answer,
-              latencyMs:
-                anthropicResult.value.latencyMs,
-              inputTokens:
-                anthropicResult.value.inputTokens,
-              outputTokens:
-                anthropicResult.value.outputTokens,
-              status:
-                AIEvaluationStatus.SUCCESS,
-            }
+            provider:
+              AIProviderType.ANTHROPIC,
+            model:
+              anthropicResult.value.model,
+            answer:
+              anthropicResult.value.answer,
+            latencyMs:
+              anthropicResult.value.latencyMs,
+            inputTokens:
+              anthropicResult.value.inputTokens,
+            outputTokens:
+              anthropicResult.value.outputTokens,
+            status:
+              AIEvaluationStatus.SUCCESS,
+          }
           : {
-              provider:
-                AIProviderType.ANTHROPIC,
-              model:
-                aiRuntimeConfig.anthropicModel,
-              status: AIEvaluationStatus.ERROR,
-              errorMessage: getErrorMessage(
-                anthropicResult.reason,
-              ),
-            },
+            provider:
+              AIProviderType.ANTHROPIC,
+            model:
+              aiRuntimeConfig.anthropicModel,
+            status: AIEvaluationStatus.ERROR,
+            errorMessage: getErrorMessage(
+              anthropicResult.reason,
+            ),
+          },
       ],
     });
 
@@ -335,17 +479,17 @@ export const aiService = {
           openAIResult.status === "fulfilled"
             ? openAIResult.value
             : formatFailure(
-                "OPENAI",
-                openAIResult.reason,
-              ),
+              "OPENAI",
+              openAIResult.reason,
+            ),
 
         anthropic:
           anthropicResult.status === "fulfilled"
             ? anthropicResult.value
             : formatFailure(
-                "ANTHROPIC",
-                anthropicResult.reason,
-              ),
+              "ANTHROPIC",
+              anthropicResult.reason,
+            ),
       },
     };
   },

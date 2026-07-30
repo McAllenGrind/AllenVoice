@@ -44,6 +44,7 @@ model AIConfiguration {
   systemPrompt   String
   language       String   @default("fr")
   voice          String   @default("default")
+  agentName String @default("AllenVoice")
   welcomeMessage String   @default("Bonjour, comment puis-je vous aider ?")
   temperature    Float    @default(0.3)
   createdAt      DateTime @default(now())

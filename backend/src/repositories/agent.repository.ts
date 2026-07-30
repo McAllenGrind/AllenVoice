@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma.js";
 
 export interface UpdateAgentConfigurationData {
+  agentName?: string;
   systemPrompt?: string;
   language?: string;
   voice?: string;

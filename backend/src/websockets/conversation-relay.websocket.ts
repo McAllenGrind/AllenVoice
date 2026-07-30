@@ -12,6 +12,9 @@ import {
 
 import { aiService } from "../services/ai.service.js";
 import { voiceCallService } from "../services/voice-call.service.js";
+import type {
+    AIProviderResult,
+} from "../models/ai.types.js";
 
 interface SetupMessage {
     type: "setup";
@@ -124,9 +127,10 @@ function isValidTwilioUpgrade(
     );
 }
 
-function sendText(
+function sendTextToken(
     socket: WebSocket,
-    text: string,
+    token: string,
+    last: boolean,
 ): void {
     if (
         socket.readyState !==
@@ -135,13 +139,59 @@ function sendText(
         return;
     }
 
+    if (!token) {
+        return;
+    }
+
     socket.send(
         JSON.stringify({
             type: "text",
-            token: text,
-            last: true,
+            token,
+            last,
             interruptible: true,
             preemptible: true,
+        }),
+    );
+}
+
+/*
+ * Compatibilité avec les réponses non streamées
+ * et les messages d’erreur.
+ */
+function sendText(
+    socket: WebSocket,
+    text: string,
+): void {
+    sendTextToken(
+        socket,
+        text,
+        true,
+    );
+}
+
+function endRelaySession(
+    socket: WebSocket,
+): void {
+    if (
+        socket.readyState !==
+        WebSocket.OPEN
+    ) {
+        return;
+    }
+
+    console.log(
+        "[ConversationRelay] Fin automatique de la conversation.",
+    );
+
+    socket.send(
+        JSON.stringify({
+            type: "end",
+
+            handoffData:
+                JSON.stringify({
+                    reason:
+                        "conversation-completed",
+                }),
         }),
     );
 }
@@ -210,49 +260,191 @@ function isTemporaryAIError(
     );
 }
 
-async function askWithVoiceFallback(
+async function streamWithVoiceFallback(
     companyId: string,
     question: string,
-) {
+    writer: RelayTextWriter,
+): Promise<AIProviderResult> {
     const primaryProvider =
         getRelayAIProvider();
 
-    try {
-        return await aiService.ask(
+    const run = (
+        provider: RelayAIProvider,
+    ) =>
+        aiService.stream(
             companyId,
             {
                 question,
-                provider: primaryProvider,
+                provider,
             },
             {
                 recordEvaluation: false,
+
+                onTextDelta: (
+                    delta,
+                ) => {
+                    writer.push(delta);
+                },
             },
         );
-    } catch (error) {
-        if (!isTemporaryAIError(error)) {
-            throw error;
-        }
 
-        const fallbackProvider =
-            getFallbackProvider(
+    try {
+        const result =
+            await run(
                 primaryProvider,
             );
 
-        console.warn(
-            `[ConversationRelay] ${primaryProvider} temporairement indisponible ` +
-            `(${getErrorStatus(error)}). Bascule vers ${fallbackProvider}.`,
+        writer.finish();
+
+        return result;
+    } catch (error) {
+        if (
+            error instanceof
+            ObsoleteGenerationError
+        ) {
+            throw error;
+        }
+
+        /*
+         * On ne change de fournisseur que
+         * si le client n’a encore rien entendu.
+         */
+        if (
+            !writer.hasSentToken &&
+            isTemporaryAIError(error)
+        ) {
+            const fallbackProvider =
+                getFallbackProvider(
+                    primaryProvider,
+                );
+
+            console.warn(
+                `[ConversationRelay] ${primaryProvider} indisponible. ` +
+                `Bascule vers ${fallbackProvider}.`,
+            );
+
+            writer.reset();
+
+            const result =
+                await run(
+                    fallbackProvider,
+                );
+
+            writer.finish();
+
+            return result;
+        }
+
+        throw error;
+    }
+}
+
+class ObsoleteGenerationError
+    extends Error {
+    constructor() {
+        super(
+            "La génération IA est devenue obsolète.",
         );
 
-        return aiService.ask(
-            companyId,
-            {
-                question,
-                provider: fallbackProvider,
-            },
-            {
-                recordEvaluation: false,
-            },
+        this.name =
+            "ObsoleteGenerationError";
+    }
+}
+
+class RelayTextWriter {
+    private pendingToken:
+        | string
+        | null = null;
+
+    public hasSentToken = false;
+
+    constructor(
+        private readonly socket:
+            WebSocket,
+
+        private readonly isCurrent:
+            () => boolean,
+    ) { }
+
+    push(token: string): void {
+        if (!this.isCurrent()) {
+            throw new ObsoleteGenerationError();
+        }
+
+        if (!token) {
+            return;
+        }
+
+        /*
+         * On envoie l’ancien morceau,
+         * puis on garde le nouveau en attente.
+         */
+        if (
+            this.pendingToken !== null
+        ) {
+            sendTextToken(
+                this.socket,
+                this.pendingToken,
+                false,
+            );
+
+            this.hasSentToken = true;
+        }
+
+        this.pendingToken = token;
+    }
+
+    finish(): void {
+        if (!this.isCurrent()) {
+            throw new ObsoleteGenerationError();
+        }
+
+        if (
+            this.pendingToken === null
+        ) {
+            return;
+        }
+
+        sendTextToken(
+            this.socket,
+            this.pendingToken,
+            true,
         );
+
+        this.hasSentToken = true;
+        this.pendingToken = null;
+    }
+
+    reset(): void {
+        this.pendingToken = null;
+        this.hasSentToken = false;
+    }
+
+    finishWithError(): void {
+        if (!this.isCurrent()) {
+            return;
+        }
+
+        if (
+            this.pendingToken !== null
+        ) {
+            sendTextToken(
+                this.socket,
+                this.pendingToken,
+                false,
+            );
+
+            this.pendingToken = null;
+            this.hasSentToken = true;
+        }
+
+        sendTextToken(
+            this.socket,
+            " Je suis désolé, la réponse a été interrompue.",
+            true,
+        );
+
+        this.hasSentToken = true;
     }
 }
 
@@ -282,7 +474,104 @@ function buildConversationQuestion(
         "Utilise les messages précédents seulement pour comprendre le contexte.",
         "Ne répète pas une information déjà donnée, sauf si le client la redemande.",
         "Réponds naturellement et brièvement, comme pendant un appel téléphonique.",
+        "",
+        "STYLE DE CONVERSATION :",
+        "Parle naturellement comme une vraie personne au téléphone.",
+        "Ne termine pas systématiquement tes réponses par une question.",
+        "Ne demande pas systématiquement au client s'il a d'autres questions.",
+        "Évite les formulations répétitives comme « N'hésitez pas si vous avez d'autres questions ».",
+        "Si tu ne peux pas effectuer une action demandée, explique-le simplement et brièvement, puis laisse naturellement le client réagir.",
+        "Ne transforme pas chaque réponse en message de service client générique.",
+        "Adapte ton ton au contexte de la conversation.",
+        "",
+        "ACTIONS NON DISPONIBLES :",
+        "Si le client demande une action que tu ne peux pas réellement effectuer, ne prétends jamais l'avoir faite.",
+        "Dis simplement et naturellement que tu ne peux pas effectuer cette action pour le moment.",
+        "Tu peux donner une information utile ou expliquer ce qui est possible, mais ne termine pas automatiquement en demandant si le client a d'autres questions.",
+        "",
+        "RÈGLE IMPORTANTE POUR LA FIN D'APPEL :",
+        "Ne clôture pas la conversation simplement parce que le client dit merci.",
+        "Clôture uniquement lorsque le client indique clairement qu'il n'a plus de question ou qu'il souhaite terminer l'appel.",
+        "Lorsque tu clôtures réellement l'appel, termine obligatoirement ta réponse par EXACTEMENT l'une de ces formulations :",
+        ...CALL_CLOSING_PHRASES.map(
+            (phrase) => `- ${phrase}`,
+        ),
+        "N'utilise pas ces formulations pour clôturer tant que le client souhaite poursuivre la conversation.",
     ].join("\n");
+}
+
+const CALL_CLOSING_PHRASES = [
+    "Avec plaisir. Bonne journée !",
+    "Je vous en prie. Bonne journée !",
+    "Merci de votre appel. Bonne journée !",
+    "Au revoir et bonne journée !",
+] as const;
+
+const CALL_CLOSING_DELAY_MS = 10_000;
+
+function normalizeText(
+    text: string,
+): string {
+    return text
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(
+            /[\u0300-\u036f]/g,
+            "",
+        )
+        .replace(
+            /[!?.,;:]+/g,
+            "",
+        )
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function isOfficialClosing(
+    text: string,
+): boolean {
+    const normalizedAnswer =
+        normalizeText(text);
+
+    return CALL_CLOSING_PHRASES.some(
+        (phrase) =>
+            normalizedAnswer.endsWith(
+                normalizeText(phrase),
+            ),
+    );
+}
+
+function customerIndicatesEnd(
+    text: string,
+): boolean {
+    const normalized =
+        normalizeText(text);
+
+    const endPatterns = [
+        "c'est bon",
+        "cest bon",
+        "je n'ai plus de questions",
+        "je nai plus de questions",
+        "plus de questions",
+        "c'est tout",
+        "cest tout",
+        "ce sera tout",
+        "non merci",
+        "merci c'est tout",
+        "merci cest tout",
+        "merci c'est bon",
+        "merci cest bon",
+        "au revoir",
+        "bonne journee",
+        "bonne soiree",
+    ];
+
+    return endPatterns.some(
+        (pattern) =>
+            normalized.includes(
+                normalizeText(pattern),
+            ),
+    );
 }
 
 export function registerConversationRelayWebSocket(
@@ -364,6 +653,29 @@ export function registerConversationRelayWebSocket(
 
             let generationNumber = 0;
 
+            let farewellTimer:
+                | ReturnType<typeof setTimeout>
+                | null = null;
+
+            let customerWantsToEnd = false;
+
+            const cancelFarewellTimer =
+                (): void => {
+                    if (farewellTimer === null) {
+                        return;
+                    }
+
+                    clearTimeout(
+                        farewellTimer,
+                    );
+
+                    farewellTimer = null;
+
+                    console.log(
+                        "[ConversationRelay] Fin automatique annulée : le client a repris la parole.",
+                    );
+                };
+
             socket.on(
                 "message",
                 async (rawData) => {
@@ -418,6 +730,8 @@ export function registerConversationRelayWebSocket(
                             const prompt =
                                 message as PromptMessage;
 
+                            cancelFarewellTimer();
+
                             console.log(
                                 "[ConversationRelay] Client :",
                                 prompt.voicePrompt,
@@ -431,6 +745,11 @@ export function registerConversationRelayWebSocket(
 
                             const customerText =
                                 prompt.voicePrompt.trim();
+
+                            customerWantsToEnd =
+                                customerIndicatesEnd(
+                                    customerText,
+                                );
 
                             if (!customerText) {
                                 return;
@@ -485,21 +804,28 @@ export function registerConversationRelayWebSocket(
                                     conversationSnapshot,
                                 );
 
+                            const writer =
+                                new RelayTextWriter(
+                                    socket,
+                                    () =>
+                                        currentGeneration ===
+                                        generationNumber,
+                                );
+
+                            let result: AIProviderResult;
+
                             try {
-                                const result =
-                                    await askWithVoiceFallback(
+                                result =
+                                    await streamWithVoiceFallback(
                                         companyId,
                                         question,
+                                        writer,
                                     );
 
                                 if (
                                     currentGeneration !==
                                     generationNumber
                                 ) {
-                                    console.log(
-                                        "[ConversationRelay] Réponse IA devenue obsolète.",
-                                    );
-
                                     return;
                                 }
 
@@ -527,27 +853,74 @@ export function registerConversationRelayWebSocket(
                                     "[ConversationRelay] AllenVoice :",
                                     result.answer,
                                 );
+                                const officialClosing =
+                                    isOfficialClosing(
+                                        result.answer,
+                                    );
 
-                                sendText(
-                                    socket,
-                                    result.answer,
+                                console.log(
+                                    "[ConversationRelay] Analyse fin d'appel :",
+                                    {
+                                        customerWantsToEnd,
+                                        officialClosing,
+                                    },
                                 );
+
+                                if (customerWantsToEnd) {
+                                    cancelFarewellTimer();
+
+                                    console.log(
+                                        "[ConversationRelay] Clôture confirmée. Attente de 10 secondes.",
+                                    );
+
+                                    farewellTimer =
+                                        setTimeout(
+                                            () => {
+                                                farewellTimer = null;
+
+                                                endRelaySession(
+                                                    socket,
+                                                );
+                                            },
+                                            CALL_CLOSING_DELAY_MS,
+                                        );
+                                }
+
                             } catch (error) {
+                                if (
+                                    error instanceof
+                                    ObsoleteGenerationError
+                                ) {
+                                    console.log(
+                                        "[ConversationRelay] Génération arrêtée après interruption.",
+                                    );
+
+                                    return;
+                                }
+
                                 console.error(
                                     "[ConversationRelay] Erreur IA :",
                                     error,
                                 );
 
-                                sendText(
-                                    socket,
-                                    "Je suis désolé, je ne peux pas répondre pour le moment.",
-                                );
+                                if (writer.hasSentToken) {
+                                    writer.finishWithError();
+                                } else {
+                                    sendText(
+                                        socket,
+                                        "Je suis désolé, je ne peux pas répondre pour le moment.",
+                                    );
+                                }
+
+                                return;
                             }
 
                             return;
                         }
 
-                        if (message.type === "interrupt") {
+                        if (
+                            message.type === "interrupt"
+                        ) {
                             generationNumber += 1;
 
                             console.log(
@@ -580,6 +953,8 @@ export function registerConversationRelayWebSocket(
             socket.on(
                 "close",
                 () => {
+                    cancelFarewellTimer();
+
                     console.log(
                         "[ConversationRelay] WebSocket fermé.",
                     );
