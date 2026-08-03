@@ -542,7 +542,6 @@ export interface AgentConfiguration {
 
 export interface UpdateAgentConfigurationInput {
   agentName?: string;
-  language?: string;
   voice?: string;
   welcomeMessage?: string;
 }

@@ -16,9 +16,6 @@ export default function AgentPage() {
     const [welcomeMessage, setWelcomeMessage] =
         useState("");
 
-    const [language, setLanguage] =
-        useState("");
-
     const [voice, setVoice] =
         useState("");
 
@@ -46,10 +43,6 @@ export default function AgentPage() {
 
                 setWelcomeMessage(
                     configuration.welcomeMessage,
-                );
-
-                setLanguage(
-                    configuration.language,
                 );
 
                 setVoice(
@@ -83,7 +76,6 @@ export default function AgentPage() {
                 await updateAgentConfiguration({
                     agentName,
                     welcomeMessage,
-                    language,
                     voice,
                 });
 
@@ -95,7 +87,6 @@ export default function AgentPage() {
                 updated.welcomeMessage,
             );
 
-            setLanguage(updated.language);
             setVoice(updated.voice);
 
             setSuccess(
@@ -148,7 +139,7 @@ export default function AgentPage() {
                         }
                     />
                 </div>
-                
+
                 <div>
                     <label htmlFor="welcomeMessage">
                         Message d'accueil
@@ -168,22 +159,6 @@ export default function AgentPage() {
                 </div>
 
                 <div>
-                    <label htmlFor="language">
-                        Langue
-                    </label>
-
-                    <select
-                        id="language"
-                        value="fr-CA"
-                        disabled
-                    >
-                        <option value="fr-CA">
-                            Français — Canada
-                        </option>
-                    </select>
-                </div>
-
-                <div>
                     <label htmlFor="voice">
                         Voix
                     </label>
@@ -196,15 +171,15 @@ export default function AgentPage() {
                         }
                     >
                         <option value="ALLEN_1">
-                            Voix 1
+                            chaleureuse et professionnelle
                         </option>
 
                         <option value="ALLEN_2">
-                            Voix 2
+                             Naturelle et dynamique
                         </option>
 
                         <option value="ALLEN_3">
-                            Voix 3
+                            Calme et rassurant
                         </option>
                     </select>
                 </div>

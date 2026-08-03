@@ -18,6 +18,10 @@ import {
     voiceCallService,
 } from "../services/voice-call.service.js";
 
+import {
+    resolveTwilioVoice,
+} from "../config/voice-presets.js";
+
 type RelayTranscriptionProvider =
     | "Deepgram"
     | "Google";
@@ -42,8 +46,12 @@ interface TwilioRelayActionBody
 interface BuildRelayTwimlInput {
     companyId: string;
     welcomeMessage: string;
+
+    voicePreset: string;
+
     transcriptionProvider:
     RelayTranscriptionProvider;
+
     fallbackUsed: boolean;
 }
 
@@ -110,11 +118,23 @@ function buildRelayTwiml(
     const domain =
         getConversationRelayDomain();
 
+    const frenchVoiceId =
+        resolveTwilioVoice(
+            "fr-CA",
+            input.voicePreset,
+        );
+
+    const englishVoiceId =
+        resolveTwilioVoice(
+            "en-US",
+            input.voicePreset,
+        );
+
     const voiceId =
-        process.env
-            .CONVERSATION_RELAY_VOICE_ID
-            ?.trim() ||
-        "IPgYtHTNLjC7Bq7IPHrm";
+        resolveTwilioVoice(
+            "fr-CA",
+            input.voicePreset,
+        );
 
     const twiml =
         new twilio.twiml
@@ -152,7 +172,10 @@ function buildRelayTwiml(
                 welcomeGreeting:
                     input.welcomeMessage,
 
-                language:
+                ttsLanguage:
+                    "fr-CA",
+
+                transcriptionLanguage:
                     "fr-CA",
 
                 transcriptionProvider:
@@ -165,7 +188,7 @@ function buildRelayTwiml(
                     "ElevenLabs",
 
                 voice:
-                    voiceId,
+                    frenchVoiceId,
 
                 interruptible:
                     "speech",
@@ -186,8 +209,11 @@ function buildRelayTwiml(
                 welcomeGreeting:
                     input.welcomeMessage,
 
-                language:
+                ttsLanguage:
                     "fr-CA",
+
+                transcriptionLanguage:
+                    "multi",
 
                 transcriptionProvider:
                     "Deepgram",
@@ -196,7 +222,7 @@ function buildRelayTwiml(
                     "ElevenLabs",
 
                 voice:
-                    voiceId,
+                    frenchVoiceId,
 
                 interruptible:
                     "speech",
@@ -210,6 +236,42 @@ function buildRelayTwiml(
                 ignorebackchannel:
                     "true",
             });
+
+    relay.language({
+        code:
+            "fr-CA",
+
+        ttsProvider:
+            "ElevenLabs",
+
+        voice:
+            frenchVoiceId,
+
+        transcriptionProvider:
+            input.transcriptionProvider,
+    });
+
+    relay.language({
+        code:
+            "en-US",
+
+        ttsProvider:
+            "ElevenLabs",
+
+        voice:
+            englishVoiceId,
+
+        transcriptionProvider:
+            input.transcriptionProvider,
+    });
+
+    relay.parameter({
+        name:
+            "transcriptionProvider",
+
+        value:
+            input.transcriptionProvider,
+    });
 
     relay.parameter({
         name: "companyId",
@@ -337,6 +399,8 @@ export async function handleRelayIncomingCall(
                 welcomeMessage:
                     agentConfiguration
                         .welcomeMessage,
+                voicePreset:
+                    agentConfiguration.voice,
 
                 transcriptionProvider,
 
@@ -492,6 +556,9 @@ export async function handleRelayAction(
 
                     welcomeMessage:
                         "Je vous écoute.",
+
+                    voicePreset:
+                        agentConfiguration.voice,
 
                     transcriptionProvider:
                         "Google",

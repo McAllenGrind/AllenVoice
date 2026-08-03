@@ -16,6 +16,13 @@ import type {
     AIProviderResult,
 } from "../models/ai.types.js";
 
+import {
+    buildResponseLanguageInstruction,
+    createInitialCallLanguageState,
+    evaluateCallLanguage,
+    type CallLanguage,
+} from "../services/call-language.service.js";
+
 interface SetupMessage {
     type: "setup";
     sessionId: string;
@@ -25,13 +32,16 @@ interface SetupMessage {
 
     customParameters?: {
         companyId?: string;
+
+        transcriptionProvider?:
+        string;
     };
 }
 
 interface PromptMessage {
     type: "prompt";
     voicePrompt: string;
-    lang: string;
+    lang?: string;
     last: boolean;
 }
 
@@ -166,6 +176,59 @@ function sendText(
         socket,
         text,
         true,
+    );
+}
+
+type RelayTranscriptionProvider =
+    | "Deepgram"
+    | "Google";
+
+function sendLanguageSelection(
+    socket: WebSocket,
+    language: CallLanguage,
+    transcriptionProvider:
+        RelayTranscriptionProvider,
+): void {
+    if (
+        socket.readyState !==
+        WebSocket.OPEN
+    ) {
+        return;
+    }
+
+    const message: {
+        type: "language";
+        ttsLanguage: CallLanguage;
+        transcriptionLanguage?:
+        CallLanguage;
+    } = {
+        type:
+            "language",
+
+        ttsLanguage:
+            language,
+    };
+
+    /*
+     * Deepgram reste en mode multi afin
+     * de continuer à détecter les deux langues.
+     *
+     * Google ne possède pas ce mode dans
+     * cette configuration : on change donc
+     * aussi sa langue de transcription.
+     */
+    if (
+        transcriptionProvider ===
+        "Google"
+    ) {
+        message.transcriptionLanguage =
+            language;
+    }
+
+    socket.send(
+        JSON.stringify(
+            message,
+        ),
     );
 }
 
@@ -716,6 +779,18 @@ function customerIndicatesEnd(
         "merci cest bon",
         "parfait merci",
         "parfait merci bien",
+        "thats good",
+        "that's good",
+        "thats all",
+        "that's all",
+        "have a good day",
+        "have a great day",
+        "have a nice day",
+        "goodbye",
+        "bye",
+        "thank you goodbye",
+        "thanks goodbye",
+        "no more questions",
         "d'accord merci",
         "daccord merci",
         "merci bien bonne journee",
@@ -833,6 +908,13 @@ export function registerConversationRelayWebSocket(
                 | null = null;
 
             let customerWantsToEnd = false;
+
+            let languageState =
+                createInitialCallLanguageState();
+
+            let transcriptionProvider:
+                RelayTranscriptionProvider =
+                "Deepgram";
 
             const cancelFarewellTimer =
                 (): void => {
@@ -961,6 +1043,13 @@ export function registerConversationRelayWebSocket(
                             callSid =
                                 setup.callSid?.trim() ?? null;
 
+                            transcriptionProvider =
+                                setup.customParameters
+                                    ?.transcriptionProvider ===
+                                    "Google"
+                                    ? "Google"
+                                    : "Deepgram";
+
                             if (!companyId || !callSid) {
                                 console.error(
                                     "[ConversationRelay] Session incomplète.",
@@ -1011,6 +1100,12 @@ export function registerConversationRelayWebSocket(
                                     companyId,
                                     from: setup.from,
                                     to: setup.to,
+
+                                    transcriptionProvider,
+
+                                    currentLanguage:
+                                        languageState
+                                            .currentLanguage,
                                 },
                             );
 
@@ -1039,6 +1134,77 @@ export function registerConversationRelayWebSocket(
 
                             const customerText =
                                 prompt.voicePrompt.trim();
+
+                            const languageEvaluation =
+                                evaluateCallLanguage({
+                                    state:
+                                        languageState,
+
+                                    text:
+                                        customerText,
+
+                                    providerLanguage:
+                                        transcriptionProvider ===
+                                            "Deepgram"
+                                            ? prompt.lang
+                                            : undefined,
+                                });
+
+                            languageState =
+                                languageEvaluation.nextState;
+
+                            console.log(
+                                "[ConversationRelay] Décision de langue",
+                                {
+                                    providerLanguage:
+                                        prompt.lang,
+
+                                    currentLanguage:
+                                        languageState
+                                            .currentLanguage,
+
+                                    detectedLanguage:
+                                        languageEvaluation
+                                            .detectedLanguage,
+
+                                    shouldSwitch:
+                                        languageEvaluation
+                                            .shouldSwitch,
+
+                                    reason:
+                                        languageEvaluation
+                                            .reason,
+
+                                    frenchScore:
+                                        languageEvaluation
+                                            .frenchScore,
+
+                                    englishScore:
+                                        languageEvaluation
+                                            .englishScore,
+                                },
+                            );
+
+                            if (
+                                languageEvaluation
+                                    .shouldSwitch
+                            ) {
+                                sendLanguageSelection(
+                                    socket,
+                                    languageState
+                                        .currentLanguage,
+                                    transcriptionProvider,
+                                );
+
+                                console.log(
+                                    "[ConversationRelay] Langue active modifiée",
+                                    {
+                                        language:
+                                            languageState
+                                                .currentLanguage,
+                                    },
+                                );
+                            }
 
                             customerWantsToEnd =
                                 customerIndicatesEnd(
@@ -1107,11 +1273,17 @@ export function registerConversationRelayWebSocket(
                                     },
                                 ];
 
-                            const question =
+                            const question = [
                                 buildConversationQuestion(
                                     conversationSnapshot,
                                     customerWantsToEnd,
-                                );
+                                ),
+
+                                buildResponseLanguageInstruction(
+                                    languageState
+                                        .currentLanguage,
+                                ),
+                            ].join("\n\n");
 
                             const knowledgeQuery =
                                 buildContextualKnowledgeQuery(

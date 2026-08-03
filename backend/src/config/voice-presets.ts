@@ -8,6 +8,10 @@ export type SupportedVoiceLanguage =
   | "fr-FR"
   | "en-US";
 
+type RuntimeVoiceLanguage =
+  | "fr-CA"
+  | "en-US";
+
 export const SUPPORTED_VOICE_LANGUAGES:
   SupportedVoiceLanguage[] = [
     "fr-CA",
@@ -22,41 +26,30 @@ export const ALLEN_VOICE_PRESETS:
     "ALLEN_3",
   ];
 
-const voiceMap: Record<
-  SupportedVoiceLanguage,
+const VOICE_ENV_KEYS: Record<
+  RuntimeVoiceLanguage,
   Record<AllenVoicePreset, string>
 > = {
   "fr-CA": {
     ALLEN_1:
-      "Google.fr-CA-Chirp3-HD-Aoede",
+      "ALLENVOICE_VOICE_ALLEN_1_FR",
 
     ALLEN_2:
-      "Google.fr-CA-Chirp3-HD-Charon",
+      "ALLENVOICE_VOICE_ALLEN_2_FR",
 
     ALLEN_3:
-      "Polly.Gabrielle-Neural",
-  },
-
-  "fr-FR": {
-    ALLEN_1:
-      "Google.fr-FR-Chirp3-HD-Aoede",
-
-    ALLEN_2:
-      "Google.fr-FR-Chirp3-HD-Charon",
-
-    ALLEN_3:
-      "Polly.Lea-Neural",
+      "ALLENVOICE_VOICE_ALLEN_3_FR",
   },
 
   "en-US": {
     ALLEN_1:
-      "Google.en-US-Chirp3-HD-Aoede",
+      "ALLENVOICE_VOICE_ALLEN_1_EN",
 
     ALLEN_2:
-      "Google.en-US-Chirp3-HD-Charon",
+      "ALLENVOICE_VOICE_ALLEN_2_EN",
 
     ALLEN_3:
-      "Google.en-US-Chirp3-HD-Kore",
+      "ALLENVOICE_VOICE_ALLEN_3_EN",
   },
 };
 
@@ -76,20 +69,86 @@ export function isAllenVoicePreset(
   );
 }
 
+function normalizeRuntimeLanguage(
+  language: string,
+): RuntimeVoiceLanguage {
+  if (language === "en-US") {
+    return "en-US";
+  }
+
+  return "fr-CA";
+}
+
+function getConfiguredVoice(
+  language: RuntimeVoiceLanguage,
+  preset: AllenVoicePreset,
+): string | null {
+  const environmentKey =
+    VOICE_ENV_KEYS[language][preset];
+
+  return (
+    process.env[
+      environmentKey
+    ]?.trim() || null
+  );
+}
+
 export function resolveTwilioVoice(
   language: string,
   preset: string,
 ): string {
-  const safeLanguage:
-    SupportedVoiceLanguage =
-    isSupportedVoiceLanguage(language)
-      ? language
-      : "fr-CA";
-
-  const safePreset: AllenVoicePreset =
+  const safePreset:
+    AllenVoicePreset =
     isAllenVoicePreset(preset)
       ? preset
       : "ALLEN_1";
 
-  return voiceMap[safeLanguage][safePreset];
+  const safeLanguage =
+    normalizeRuntimeLanguage(
+      language,
+    );
+
+  const configuredVoice =
+    getConfiguredVoice(
+      safeLanguage,
+      safePreset,
+    );
+
+  if (configuredVoice) {
+    return configuredVoice;
+  }
+
+  /*
+   * Tant que les voix anglaises ne sont pas
+   * configurées, on conserve la voix française
+   * correspondante au lieu de faire planter l’appel.
+   */
+  if (safeLanguage === "en-US") {
+    const matchingFrenchVoice =
+      getConfiguredVoice(
+        "fr-CA",
+        safePreset,
+      );
+
+    if (matchingFrenchVoice) {
+      return matchingFrenchVoice;
+    }
+  }
+
+  /*
+   * Compatibilité avec l’ancienne variable.
+   */
+  const legacyVoice =
+    process.env
+      .CONVERSATION_RELAY_VOICE_ID
+      ?.trim();
+
+  if (legacyVoice) {
+    return legacyVoice;
+  }
+
+  /*
+   * Ancienne voix utilisée par AllenVoice.
+   */
+  return "IPgYtHTNLjC7Bq7IPHrm";
 }
