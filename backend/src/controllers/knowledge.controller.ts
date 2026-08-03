@@ -8,10 +8,16 @@ import type { AccessTokenPayload } from "../models/auth.types.js";
 
 import type {
   CreateKnowledgeDocumentInput,
+  SearchKnowledgeInput,
   UpdateKnowledgeDocumentInput,
+  UploadKnowledgeDocumentInput,
 } from "../models/knowledge.types.js";
 
 import { knowledgeService } from "../services/knowledge.service.js";
+
+import {
+  knowledgeSearchService,
+} from "../services/knowledge-search.service.js";
 
 /*
  * Forme des paramètres pour les routes :
@@ -36,7 +42,7 @@ export async function createKnowledgeDocument(
     const auth = getAuth(res);
 
     const input = (
-        req.body ?? {}
+      req.body ?? {}
     ) as CreateKnowledgeDocumentInput;
 
     const document = await knowledgeService.create(
@@ -46,6 +52,66 @@ export async function createKnowledgeDocument(
 
     res.status(201).json({
       message: "Connaissance ajoutée avec succès.",
+      data: document,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function searchKnowledgeDocuments(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const auth = getAuth(res);
+
+    const input = (
+      req.body ?? {}
+    ) as SearchKnowledgeInput;
+
+    const results =
+      await knowledgeSearchService.search(
+        auth.companyId,
+        input.query,
+        input.limit,
+      );
+
+    res.status(200).json({
+      data: {
+        query: input.query,
+        resultCount: results.length,
+        results,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function uploadKnowledgeDocument(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const auth = getAuth(res);
+
+    const input = (
+      req.body ?? {}
+    ) as UploadKnowledgeDocumentInput;
+
+    const document =
+      await knowledgeService.upload(
+        auth.companyId,
+        input,
+        req.file,
+      );
+
+    res.status(201).json({
+      message:
+        "Le document a été analysé et ajouté avec succès.",
       data: document,
     });
   } catch (error) {
@@ -103,8 +169,8 @@ export async function updateKnowledgeDocument(
     const auth = getAuth(res);
 
     const input = (
-        req.body ?? {}
-    ) as CreateKnowledgeDocumentInput;
+      req.body ?? {}
+    ) as UpdateKnowledgeDocumentInput;
 
     const document = await knowledgeService.update(
       req.params.id,

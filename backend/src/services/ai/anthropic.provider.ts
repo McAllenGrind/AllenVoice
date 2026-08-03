@@ -14,6 +14,8 @@ interface GenerateAnthropicInput {
 
 interface StreamAnthropicInput
   extends GenerateAnthropicInput {
+  signal?: AbortSignal;
+
   onTextDelta: (
     delta: string,
   ) => void | Promise<void>;
@@ -82,33 +84,43 @@ export async function streamWithAnthropic(
   const startedAt =
     Date.now();
 
+  const requestOptions =
+    input.signal
+      ? {
+        signal: input.signal,
+      }
+      : undefined;
+
   const stream =
-    client.messages.stream({
-      model:
-        aiRuntimeConfig.anthropicModel,
+    client.messages.stream(
+      {
+        model:
+          aiRuntimeConfig.anthropicModel,
 
-      max_tokens:
-        aiRuntimeConfig.maxOutputTokens,
+        max_tokens:
+          aiRuntimeConfig.maxOutputTokens,
 
-      system:
-        input.systemPrompt,
+        system:
+          input.systemPrompt,
 
-      messages: [
-        {
-          role: "user",
-          content: input.question,
-        },
-      ],
-    });
+        messages: [
+          {
+            role: "user",
+            content: input.question,
+          },
+        ],
+      },
+      requestOptions,
+    );
 
   let answer = "";
 
   for await (const event of stream) {
     if (
       event.type ===
-        "content_block_delta" &&
+      "content_block_delta" &&
       event.delta.type ===
-        "text_delta"
+      "text_delta"
     ) {
       const delta =
         event.delta.text;

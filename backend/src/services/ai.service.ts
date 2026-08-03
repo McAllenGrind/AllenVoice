@@ -28,6 +28,10 @@ import {
 } from "./ai/openai.provider.js";
 import { buildAgentSystemPrompt } from "./ai-prompt.service.js";
 
+import {
+  knowledgeSearchService,
+} from "./knowledge-search.service.js";
+
 function parseProvider(
   provider: string | undefined,
 ): AIProvider {
@@ -48,11 +52,48 @@ function parseProvider(
   return normalizedProvider;
 }
 
+async function searchKnowledgeSafely(
+  companyId: string,
+  question: string,
+) {
+  /*
+   * Les interventions très courtes comme
+   * « oui », « ok » ou « hm » ne nécessitent
+   * pas une recherche documentaire.
+   */
+  if (question.length < 3) {
+    return [];
+  }
+
+  try {
+    return await knowledgeSearchService.search(
+      companyId,
+      question,
+    );
+  } catch (error) {
+    /*
+     * Une panne temporaire des embeddings ou
+     * de pgvector ne doit pas faire tomber l’appel.
+     *
+     * L’agent continuera sans connaissance factuelle
+     * et indiquera qu’il ne possède pas l’information.
+     */
+    console.error(
+      "Impossible d’effectuer la recherche documentaire :",
+      error,
+    );
+
+    return [];
+  }
+}
+
 async function prepareRequest(
   companyId: string,
   questionValue: string | undefined,
+  knowledgeQueryValue?: string,
 ) {
-  const question = questionValue?.trim();
+  const question =
+    questionValue?.trim();
 
   if (!question) {
     throw new AppError(
@@ -61,8 +102,14 @@ async function prepareRequest(
     );
   }
 
+  const knowledgeQuery =
+    knowledgeQueryValue?.trim() ||
+    question;
+
   const company =
-    await aiRepository.getCompanyContext(companyId);
+    await aiRepository.getCompanyContext(
+      companyId,
+    );
 
   if (!company) {
     throw new AppError(
@@ -85,30 +132,31 @@ async function prepareRequest(
     );
   }
 
-  const documents =
-    company.knowledgeBase?.documents ?? [];
-
-  if (documents.length === 0) {
-    throw new AppError(
-      409,
-      "Ajoutez au moins une connaissance active avant d’interroger l’agent.",
+  const passages =
+    await searchKnowledgeSafely(
+      companyId,
+      knowledgeQuery,
     );
-  }
 
-  const systemPrompt = buildAgentSystemPrompt({
-    companyName: company.name,
+  const systemPrompt =
+    buildAgentSystemPrompt({
+      companyName:
+        company.name,
 
-    agentName:
-      company.aiConfiguration.agentName,
+      agentName:
+        company.aiConfiguration.agentName,
 
-    language:
-      company.aiConfiguration.language,
+      language:
+        company.aiConfiguration.language,
 
-    customSystemPrompt:
-      company.aiConfiguration.systemPrompt,
+      timeZone:
+        company.timeZone,
 
-    documents,
-  });
+      customSystemPrompt:
+        company.aiConfiguration.systemPrompt,
+
+      passages,
+    });
 
   return {
     question,
@@ -141,12 +189,16 @@ async function runProviderStream(
   onTextDelta: (
     delta: string,
   ) => void | Promise<void>,
+  signal?: AbortSignal,
 ): Promise<AIProviderResult> {
+  signal?.throwIfAborted();
+
   if (provider === "ANTHROPIC") {
     return streamWithAnthropic({
       systemPrompt,
       question,
       onTextDelta,
+      signal,
     });
   }
 
@@ -154,6 +206,7 @@ async function runProviderStream(
     systemPrompt,
     question,
     onTextDelta,
+    signal,
   });
 }
 
@@ -215,6 +268,8 @@ interface AskAIOptions {
 
 interface StreamAIOptions
   extends AskAIOptions {
+  signal?: AbortSignal;
+
   onTextDelta: (
     delta: string,
   ) => void | Promise<void>;
@@ -226,10 +281,12 @@ export const aiService = {
     input: AskAIInput,
     options: AskAIOptions = {},
   ) {
-    const prepared = await prepareRequest(
-      companyId,
-      input.question,
-    );
+    const prepared =
+      await prepareRequest(
+        companyId,
+        input.question,
+        input.knowledgeQuery,
+      );
 
     const provider = parseProvider(input.provider);
     const shouldRecordEvaluation =
@@ -292,11 +349,16 @@ export const aiService = {
     input: AskAIInput,
     options: StreamAIOptions,
   ): Promise<AIProviderResult> {
+    options.signal?.throwIfAborted();
+
     const prepared =
       await prepareRequest(
         companyId,
         input.question,
+        input.knowledgeQuery,
       );
+
+    options.signal?.throwIfAborted();
 
     const provider =
       parseProvider(
@@ -314,6 +376,7 @@ export const aiService = {
           prepared.systemPrompt,
           prepared.question,
           options.onTextDelta,
+          options.signal,
         );
 
       if (shouldRecordEvaluation) {
@@ -391,10 +454,12 @@ export const aiService = {
     companyId: string,
     input: AskAIInput,
   ) {
-    const prepared = await prepareRequest(
-      companyId,
-      input.question,
-    );
+    const prepared =
+      await prepareRequest(
+        companyId,
+        input.question,
+        input.knowledgeQuery,
+      );
 
     const [openAIResult, anthropicResult] =
       await Promise.allSettled([

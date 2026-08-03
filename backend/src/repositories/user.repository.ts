@@ -28,6 +28,7 @@ export const userRepository = {
         id: true,
         fullName: true,
         email: true,
+        isPlatformAdmin: true,
         createdAt: true,
         updatedAt: true,
 

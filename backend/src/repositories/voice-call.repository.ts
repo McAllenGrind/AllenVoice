@@ -140,21 +140,51 @@ export const voiceCallRepository = {
     });
   },
 
-  findByTwilioCallSid(
-  twilioCallSid: string,
-) {
-  return prisma.voiceCall.findUnique({
-    where: {
-      twilioCallSid,
-    },
+  findRecentMessagesByCallSid(
+    twilioCallSid: string,
+    limit: number,
+  ) {
+    return prisma.voiceMessage.findMany({
+      where: {
+        call: {
+          twilioCallSid,
+        },
+      },
 
-    select: {
-      id: true,
-      companyId: true,
-      twilioCallSid: true,
-    },
-  });
-},
+      orderBy: [
+        {
+          createdAt: "desc",
+        },
+        {
+          id: "desc",
+        },
+      ],
+
+      take: limit,
+
+      select: {
+        role: true,
+        text: true,
+        createdAt: true,
+      },
+    });
+  },
+
+  findByTwilioCallSid(
+    twilioCallSid: string,
+  ) {
+    return prisma.voiceCall.findUnique({
+      where: {
+        twilioCallSid,
+      },
+
+      select: {
+        id: true,
+        companyId: true,
+        twilioCallSid: true,
+      },
+    });
+  },
 
   findByIdForCompany(
     id: string,

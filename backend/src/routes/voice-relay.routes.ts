@@ -1,6 +1,9 @@
-import { Router } from "express";
+import {
+  Router,
+} from "express";
 
 import {
+  handleRelayAction,
   handleRelayIncomingCall,
 } from "../controllers/voice-relay.controller.js";
 
@@ -15,4 +18,10 @@ voiceRelayRouter.post(
   "/incoming",
   validateTwilioWebhook,
   handleRelayIncomingCall,
+);
+
+voiceRelayRouter.post(
+  "/action",
+  validateTwilioWebhook,
+  handleRelayAction,
 );

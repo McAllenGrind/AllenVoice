@@ -14,6 +14,8 @@ interface GenerateOpenAIInput {
 
 interface StreamOpenAIInput
   extends GenerateOpenAIInput {
+  signal?: AbortSignal;
+
   onTextDelta: (
     delta: string,
   ) => void | Promise<void>;
@@ -122,26 +124,36 @@ export async function streamWithOpenAI(
     | undefined;
 
   try {
+    const requestOptions =
+      input.signal
+        ? {
+          signal: input.signal,
+        }
+        : undefined;
+
     const stream =
-      await client.responses.create({
-        model:
-          aiRuntimeConfig.openAIModel,
+      await client.responses.create(
+        {
+          model:
+            aiRuntimeConfig.openAIModel,
 
-        reasoning: {
-          effort: "low",
+          reasoning: {
+            effort: "low",
+          },
+
+          instructions:
+            input.systemPrompt,
+
+          input: input.question,
+
+          max_output_tokens:
+            aiRuntimeConfig
+              .maxOutputTokens,
+
+          stream: true,
         },
-
-        instructions:
-          input.systemPrompt,
-
-        input: input.question,
-
-        max_output_tokens:
-          aiRuntimeConfig
-            .maxOutputTokens,
-
-        stream: true,
-      });
+        requestOptions,
+      );
 
     for await (const event of stream) {
       if (

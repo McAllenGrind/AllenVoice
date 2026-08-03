@@ -20,6 +20,86 @@ export const companyRepository = {
   });
 },
 
+findAllForAdmin() {
+  return prisma.company.findMany({
+    orderBy: {
+      createdAt: "desc",
+    },
+
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phoneNumber: true,
+      voicePhoneNumber: true,
+      industry: true,
+      isActive: true,
+      createdAt: true,
+      updatedAt: true,
+
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          createdAt: true,
+        },
+      },
+
+      aiConfiguration: {
+        select: {
+          id: true,
+          agentName: true,
+          language: true,
+          voice: true,
+          welcomeMessage: true,
+          temperature: true,
+        },
+      },
+    },
+  });
+},
+
+findById(id: string) {
+  return prisma.company.findUnique({
+    where: {
+      id,
+    },
+
+    select: {
+      id: true,
+      isActive: true,
+    },
+  });
+},
+
+updateStatus(
+  id: string,
+  isActive: boolean,
+) {
+  return prisma.company.update({
+    where: {
+      id,
+    },
+
+    data: {
+      isActive,
+    },
+
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phoneNumber: true,
+      voicePhoneNumber: true,
+      industry: true,
+      isActive: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+},
+
   create(data: Prisma.CompanyCreateInput) {
     return prisma.company.create({
       data,
@@ -34,6 +114,7 @@ export const companyRepository = {
         industry: true,
         isActive: true,
         createdAt: true,
+        voicePhoneNumber: true,
         updatedAt: true,
 
         user: {
@@ -50,6 +131,7 @@ export const companyRepository = {
             id: true,
             language: true,
             voice: true,
+            agentName: true,
             welcomeMessage: true,
             temperature: true,
           },

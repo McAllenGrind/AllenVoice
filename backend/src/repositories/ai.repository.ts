@@ -1,7 +1,9 @@
 import { prisma } from "../lib/prisma.js";
 
 export const aiRepository = {
-  getCompanyContext(companyId: string) {
+  getCompanyContext(
+    companyId: string,
+  ) {
     return prisma.company.findUnique({
       where: {
         id: companyId,
@@ -10,6 +12,7 @@ export const aiRepository = {
       select: {
         id: true,
         name: true,
+        timeZone: true,
         isActive: true,
 
         aiConfiguration: {
@@ -17,27 +20,6 @@ export const aiRepository = {
             agentName: true,
             language: true,
             systemPrompt: true,
-          },
-        },
-
-        knowledgeBase: {
-          select: {
-            documents: {
-              where: {
-                isActive: true,
-              },
-
-              orderBy: {
-                createdAt: "asc",
-              },
-
-              select: {
-                title: true,
-                category: true,
-                content: true,
-                sourceType: true,
-              },
-            },
           },
         },
       },

@@ -79,4 +79,49 @@ export const companyService = {
 
     return companyRepository.create(companyData);
   },
+  async listForAdmin() {
+  return companyRepository.findAllForAdmin();
+},
+
+async updateStatus(
+  companyIdValue: string | undefined,
+  isActiveValue: unknown,
+) {
+  const companyId =
+    companyIdValue?.trim();
+
+  if (!companyId) {
+    throw new AppError(
+      400,
+      "L'identifiant de l'entreprise est obligatoire.",
+    );
+  }
+
+  if (
+    typeof isActiveValue !==
+    "boolean"
+  ) {
+    throw new AppError(
+      400,
+      "Le statut isActive doit être un booléen.",
+    );
+  }
+
+  const company =
+    await companyRepository.findById(
+      companyId,
+    );
+
+  if (!company) {
+    throw new AppError(
+      404,
+      "Entreprise introuvable.",
+    );
+  }
+
+  return companyRepository.updateStatus(
+    companyId,
+    isActiveValue,
+  );
+},
 };

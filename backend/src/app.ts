@@ -10,6 +10,7 @@ import voiceRouter from "./routes/voice.routes.js";
 import { agentRouter } from "./routes/agent.routes.js";
 import { accountRouter } from "./routes/account.routes.js";
 import { voiceRelayRouter,} from "./routes/voice-relay.routes.js";
+import adminRouter from "./routes/admin.routes.js";
 
 const app = express();
 
@@ -56,6 +57,7 @@ app.use("/voice", voiceRouter);
 app.use("/agent", agentRouter);
 app.use("/account", accountRouter);
 app.use("/voice/relay", voiceRelayRouter,);
+app.use("/admin",adminRouter,);
 
 
 // Toujours placer le middleware d’erreurs après les routes.

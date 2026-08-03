@@ -4,6 +4,15 @@ export type AIProvider =
 
 export interface AskAIInput {
   question: string;
+
+  /*
+   * Texte utilisé uniquement pour rechercher
+   * les passages dans la base de connaissances.
+   *
+   * Lorsqu’il est absent, question est utilisée.
+   */
+  knowledgeQuery?: string;
+
   provider?: AIProvider;
 }
 

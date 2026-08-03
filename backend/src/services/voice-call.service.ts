@@ -1,6 +1,7 @@
 import {
   AIProviderType,
   VoiceCallStatus,
+  VoiceMessageRole,
 } from "@prisma/client";
 
 import type {
@@ -61,6 +62,11 @@ function getFinalStatus(
   }
 
   return VoiceCallStatus.IN_PROGRESS;
+}
+
+export interface VoiceConversationTurn {
+  role: "CUSTOMER" | "AGENT";
+  text: string;
 }
 
 export const voiceCallService = {
@@ -166,6 +172,49 @@ export const voiceCallService = {
     }
 
     return call;
+  },
+
+  async getRecentConversation(
+    twilioCallSid: string,
+    requestedLimit = 8,
+  ): Promise<VoiceConversationTurn[]> {
+    const normalizedLimit =
+      Math.min(
+        Math.max(
+          Math.trunc(
+            requestedLimit,
+          ),
+          1,
+        ),
+        20,
+      );
+
+    const messages =
+      await voiceCallRepository
+        .findRecentMessagesByCallSid(
+          twilioCallSid,
+          normalizedLimit,
+        );
+
+    /*
+     * La base retourne les messages
+     * du plus récent au plus ancien.
+     *
+     * Le prompt doit les recevoir dans
+     * l’ordre normal de la conversation.
+     */
+    return messages
+      .reverse()
+      .map((message) => ({
+        role:
+          message.role ===
+            VoiceMessageRole.AGENT
+            ? "AGENT"
+            : "CUSTOMER",
+
+        text:
+          message.text,
+      }));
   },
 
   async getCompanyIdByCallSid(

@@ -171,6 +171,10 @@ function sendText(
 
 function endRelaySession(
     socket: WebSocket,
+    reason:
+        | "conversation-completed"
+        | "silence-timeout" =
+        "conversation-completed",
 ): void {
     if (
         socket.readyState !==
@@ -189,8 +193,7 @@ function endRelaySession(
 
             handoffData:
                 JSON.stringify({
-                    reason:
-                        "conversation-completed",
+                    reason,
                 }),
         }),
     );
@@ -263,22 +266,28 @@ function isTemporaryAIError(
 async function streamWithVoiceFallback(
     companyId: string,
     question: string,
+    knowledgeQuery: string,
     writer: RelayTextWriter,
+    signal: AbortSignal,
 ): Promise<AIProviderResult> {
     const primaryProvider =
         getRelayAIProvider();
 
     const run = (
         provider: RelayAIProvider,
-    ) =>
-        aiService.stream(
+    ) => {
+        signal.throwIfAborted();
+
+        return aiService.stream(
             companyId,
             {
                 question,
+                knowledgeQuery,
                 provider,
             },
             {
                 recordEvaluation: false,
+                signal,
 
                 onTextDelta: (
                     delta,
@@ -287,6 +296,7 @@ async function streamWithVoiceFallback(
                 },
             },
         );
+    };
 
     try {
         const result =
@@ -298,6 +308,10 @@ async function streamWithVoiceFallback(
 
         return result;
     } catch (error) {
+        if (signal.aborted) {
+            throw new ObsoleteGenerationError();
+        }
+
         if (
             error instanceof
             ObsoleteGenerationError
@@ -450,6 +464,7 @@ class RelayTextWriter {
 
 function buildConversationQuestion(
     turns: ConversationTurn[],
+    customerWantsToEnd: boolean,
 ): string {
     const recentTurns =
         turns.slice(-8);
@@ -466,9 +481,25 @@ function buildConversationQuestion(
             })
             .join("\n");
 
+    const closingState =
+        customerWantsToEnd
+            ? [
+                "Le client souhaite clairement terminer l’appel.",
+                "Clôture naturellement la conversation.",
+                "Termine obligatoirement par exactement une des formulations de clôture autorisées.",
+            ].join(" ")
+            : [
+                "Le client n’a pas clairement demandé de terminer l’appel.",
+                "Ne dis pas au revoir.",
+                "N’utilise aucune des formulations de clôture autorisées.",
+                "S’il remercie simplement, réponds brièvement sans clôturer l’appel.",
+            ].join(" ");
+
     return [
         "Voici la conversation téléphonique en cours :",
         transcript,
+        "",
+        `ÉTAT DE FIN D’APPEL : ${closingState}`,
         "",
         "Réponds uniquement au dernier message du client.",
         "Utilise les messages précédents seulement pour comprendre le contexte.",
@@ -490,9 +521,13 @@ function buildConversationQuestion(
         "Tu peux donner une information utile ou expliquer ce qui est possible, mais ne termine pas automatiquement en demandant si le client a d'autres questions.",
         "",
         "RÈGLE IMPORTANTE POUR LA FIN D'APPEL :",
-        "Ne clôture pas la conversation simplement parce que le client dit merci.",
-        "Clôture uniquement lorsque le client indique clairement qu'il n'a plus de question ou qu'il souhaite terminer l'appel.",
-        "Lorsque tu clôtures réellement l'appel, termine obligatoirement ta réponse par EXACTEMENT l'une de ces formulations :",
+        "RÈGLE IMPORTANTE POUR LA FIN D'APPEL :",
+        "Respecte obligatoirement l’état de fin d’appel indiqué plus haut.",
+        "Si l’état indique que le client ne souhaite pas terminer, ne dis jamais au revoir et n’utilise aucune formulation officielle de clôture.",
+        "Un simple « merci » ne signifie pas automatiquement que le client souhaite terminer.",
+        "Si le client remercie sans terminer, une réponse courte comme « Avec plaisir. » suffit.",
+        "Si l’état indique que le client souhaite clairement terminer, clôture naturellement l’appel.",
+        "Lorsque tu clôtures réellement l’appel, termine obligatoirement ta réponse par EXACTEMENT l’une de ces formulations :",
         ...CALL_CLOSING_PHRASES.map(
             (phrase) => `- ${phrase}`,
         ),
@@ -508,6 +543,34 @@ const CALL_CLOSING_PHRASES = [
 ] as const;
 
 const CALL_CLOSING_DELAY_MS = 10_000;
+
+const SILENCE_CLOSING_DELAY_MS =
+    2_500;
+
+function getTotalSilenceTimeoutMs():
+    number {
+    const rawSeconds =
+        process.env
+            .VOICE_TOTAL_SILENCE_TIMEOUT_SECONDS
+            ?.trim();
+
+    const configuredSeconds =
+        Number(rawSeconds);
+
+    if (
+        !rawSeconds ||
+        !Number.isFinite(
+            configuredSeconds,
+        ) ||
+        configuredSeconds < 10
+    ) {
+        return 30_000;
+    }
+
+    return Math.round(
+        configuredSeconds * 1_000,
+    );
+}
 
 function normalizeText(
     text: string,
@@ -561,6 +624,16 @@ function customerIndicatesEnd(
         "merci cest tout",
         "merci c'est bon",
         "merci cest bon",
+        "parfait merci",
+        "parfait merci bien",
+        "d'accord merci",
+        "daccord merci",
+        "merci bien bonne journee",
+        "merci beaucoup bonne journee",
+        "bonne journee a vous",
+        "je vais vous laisser",
+        "c'est parfait merci",
+        "cest parfait merci",
         "au revoir",
         "bonne journee",
         "bonne soiree",
@@ -653,7 +726,19 @@ export function registerConversationRelayWebSocket(
 
             let generationNumber = 0;
 
+            let activeGenerationController:
+                | AbortController
+                | null = null;
+
             let farewellTimer:
+                | ReturnType<typeof setTimeout>
+                | null = null;
+
+            let silenceTimer:
+                | ReturnType<typeof setTimeout>
+                | null = null;
+
+            let silenceClosingTimer:
                 | ReturnType<typeof setTimeout>
                 | null = null;
 
@@ -674,6 +759,96 @@ export function registerConversationRelayWebSocket(
                     console.log(
                         "[ConversationRelay] Fin automatique annulée : le client a repris la parole.",
                     );
+                };
+
+            const cancelSilenceTimers =
+                (): void => {
+                    if (
+                        silenceTimer !== null
+                    ) {
+                        clearTimeout(
+                            silenceTimer,
+                        );
+
+                        silenceTimer = null;
+                    }
+
+                    if (
+                        silenceClosingTimer !==
+                        null
+                    ) {
+                        clearTimeout(
+                            silenceClosingTimer,
+                        );
+
+                        silenceClosingTimer =
+                            null;
+                    }
+                };
+
+            const scheduleSilenceTimeout =
+                (): void => {
+                    cancelSilenceTimers();
+
+                    const timeoutMs =
+                        getTotalSilenceTimeoutMs();
+
+                    silenceTimer =
+                        setTimeout(
+                            () => {
+                                silenceTimer = null;
+
+                                /*
+                                 * Par sécurité, toute génération
+                                 * encore active devient obsolète.
+                                 */
+                                generationNumber += 1;
+
+                                activeGenerationController
+                                    ?.abort();
+
+                                activeGenerationController =
+                                    null;
+
+                                cancelFarewellTimer();
+
+                                console.log(
+                                    "[ConversationRelay] Silence total détecté. Fermeture de l'appel.",
+                                    {
+                                        silenceSeconds:
+                                            Math.round(
+                                                timeoutMs /
+                                                1_000,
+                                            ),
+                                    },
+                                );
+
+                                sendText(
+                                    socket,
+                                    "Je vais mettre fin à l'appel. Bonne journée !",
+                                );
+
+                                /*
+                                 * On laisse quelques secondes
+                                 * à Twilio pour prononcer le
+                                 * message avant de raccrocher.
+                                 */
+                                silenceClosingTimer =
+                                    setTimeout(
+                                        () => {
+                                            silenceClosingTimer =
+                                                null;
+
+                                            endRelaySession(
+                                                socket,
+                                                "silence-timeout",
+                                            );
+                                        },
+                                        SILENCE_CLOSING_DELAY_MS,
+                                    );
+                            },
+                            timeoutMs,
+                        );
                 };
 
             socket.on(
@@ -713,6 +888,32 @@ export function registerConversationRelayWebSocket(
                                 return;
                             }
 
+                            const restoredConversation =
+                                await voiceCallService
+                                    .getRecentConversation(
+                                        callSid,
+                                        8,
+                                    );
+
+                            conversation.splice(
+                                0,
+                                conversation.length,
+                                ...restoredConversation,
+                            );
+
+                            if (
+                                restoredConversation.length > 0
+                            ) {
+                                console.log(
+                                    "[ConversationRelay] Contexte précédent restauré.",
+                                    {
+                                        callSid,
+                                        restoredMessages:
+                                            restoredConversation.length,
+                                    },
+                                );
+                            }
+
                             console.log(
                                 "[ConversationRelay] Session créée",
                                 {
@@ -723,6 +924,8 @@ export function registerConversationRelayWebSocket(
                                 },
                             );
 
+                            scheduleSilenceTimeout();
+
                             return;
                         }
 
@@ -731,6 +934,7 @@ export function registerConversationRelayWebSocket(
                                 message as PromptMessage;
 
                             cancelFarewellTimer();
+                            cancelSilenceTimers();
 
                             console.log(
                                 "[ConversationRelay] Client :",
@@ -752,6 +956,7 @@ export function registerConversationRelayWebSocket(
                                 );
 
                             if (!customerText) {
+                                scheduleSilenceTimeout();
                                 return;
                             }
 
@@ -787,8 +992,21 @@ export function registerConversationRelayWebSocket(
                                 return;
                             }
 
+                            /*
+ * Une nouvelle demande rend toute génération
+ * précédente obsolète, même si Twilio n’a pas
+ * envoyé d’événement interrupt.
+ */
+                            activeGenerationController?.abort();
+
                             const currentGeneration =
                                 ++generationNumber;
+
+                            const generationController =
+                                new AbortController();
+
+                            activeGenerationController =
+                                generationController;
 
                             const conversationSnapshot:
                                 ConversationTurn[] = [
@@ -802,6 +1020,7 @@ export function registerConversationRelayWebSocket(
                             const question =
                                 buildConversationQuestion(
                                     conversationSnapshot,
+                                    customerWantsToEnd,
                                 );
 
                             const writer =
@@ -819,7 +1038,9 @@ export function registerConversationRelayWebSocket(
                                     await streamWithVoiceFallback(
                                         companyId,
                                         question,
+                                        customerText,
                                         writer,
+                                        generationController.signal,
                                     );
 
                                 if (
@@ -867,6 +1088,7 @@ export function registerConversationRelayWebSocket(
                                 );
 
                                 if (customerWantsToEnd) {
+                                    cancelSilenceTimers();
                                     cancelFarewellTimer();
 
                                     console.log(
@@ -884,15 +1106,23 @@ export function registerConversationRelayWebSocket(
                                             },
                                             CALL_CLOSING_DELAY_MS,
                                         );
+                                } else {
+                                    /*
+                                     * AllenVoice vient de terminer sa réponse.
+                                     * On attend maintenant la prochaine parole
+                                     * du client.
+                                     */
+                                    scheduleSilenceTimeout();
                                 }
 
                             } catch (error) {
                                 if (
+                                    generationController.signal.aborted ||
                                     error instanceof
                                     ObsoleteGenerationError
                                 ) {
                                     console.log(
-                                        "[ConversationRelay] Génération arrêtée après interruption.",
+                                        "[ConversationRelay] Génération annulée après interruption.",
                                     );
 
                                     return;
@@ -912,7 +1142,16 @@ export function registerConversationRelayWebSocket(
                                     );
                                 }
 
+                                scheduleSilenceTimeout();
+
                                 return;
+                            } finally {
+                                if (
+                                    activeGenerationController ===
+                                    generationController
+                                ) {
+                                    activeGenerationController = null;
+                                }
                             }
 
                             return;
@@ -921,11 +1160,33 @@ export function registerConversationRelayWebSocket(
                         if (
                             message.type === "interrupt"
                         ) {
+                            cancelFarewellTimer();
+                            cancelSilenceTimers();
+
                             generationNumber += 1;
 
+                            if (
+                                activeGenerationController &&
+                                !activeGenerationController
+                                    .signal.aborted
+                            ) {
+                                activeGenerationController
+                                    .abort();
+                            }
+
+                            activeGenerationController =
+                                null;
+
                             console.log(
-                                "[ConversationRelay] Le client a interrompu AllenVoice.",
+                                "[ConversationRelay] Le client a interrompu AllenVoice. Génération IA annulée.",
                             );
+
+                            /*
+                             * Le client vient d’interrompre l’agent.
+                             * Il dispose maintenant de 30 secondes
+                             * pour continuer à parler.
+                             */
+                            scheduleSilenceTimeout();
 
                             return;
                         }
@@ -953,7 +1214,16 @@ export function registerConversationRelayWebSocket(
             socket.on(
                 "close",
                 () => {
+                    generationNumber += 1;
+
+                    activeGenerationController
+                        ?.abort();
+
+                    activeGenerationController =
+                        null;
+
                     cancelFarewellTimer();
+                    cancelSilenceTimers();
 
                     console.log(
                         "[ConversationRelay] WebSocket fermé.",

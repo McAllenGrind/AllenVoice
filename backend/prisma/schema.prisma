@@ -3,20 +3,22 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 model Company {
-  id          String   @id @default(uuid())
-  name        String
-  email       String   @unique
-  phoneNumber String
-  voicePhoneNumber String? @unique
-  industry    String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String   @id @default(uuid())
+  name             String
+  email            String   @unique
+  phoneNumber      String
+  voicePhoneNumber String?  @unique
+  timeZone         String   @default("America/Toronto")
+  industry         String?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   user            User?
   aiConfiguration AIConfiguration?
@@ -28,12 +30,13 @@ model Company {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  fullName     String
-  email        String   @unique
-  passwordHash String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String   @id @default(uuid())
+  fullName        String
+  email           String   @unique
+  passwordHash    String
+  isPlatformAdmin Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   companyId String  @unique
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -44,7 +47,7 @@ model AIConfiguration {
   systemPrompt   String
   language       String   @default("fr")
   voice          String   @default("default")
-  agentName String @default("AllenVoice")
+  agentName      String   @default("AllenVoice")
   welcomeMessage String   @default("Bonjour, comment puis-je vous aider ?")
   temperature    Float    @default(0.3)
   createdAt      DateTime @default(now())
@@ -59,6 +62,22 @@ enum KnowledgeSourceType {
   FAQ
   PDF
   WORD
+  EXCEL
+  POWERPOINT
+  CSV
+  TXT
+  IMAGE
+}
+
+enum KnowledgeDocumentStatus {
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum KnowledgeAudience {
+  CUSTOMER
+  INTERNAL
 }
 
 enum AIEvaluationMode {
@@ -102,16 +121,57 @@ model KnowledgeDocument {
   id         String              @id @default(uuid())
   title      String
   category   String?
-  content    String
+  content    String              @default("")
   sourceType KnowledgeSourceType @default(TEXT)
-  isActive   Boolean             @default(true)
-  createdAt  DateTime            @default(now())
-  updatedAt  DateTime            @updatedAt
+
+  status   KnowledgeDocumentStatus @default(READY)
+  audience KnowledgeAudience       @default(CUSTOMER)
+  isActive Boolean                 @default(true)
+
+  fileName String?
+  mimeType String?
+  fileSize Int?
+
+  storageKey String?
+
+  extractionMode String?
+  pageCount      Int?
+  failureReason  String?
+  processedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   knowledgeBaseId String
   knowledgeBase   KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
 
+  chunks KnowledgeChunk[]
+
   @@index([knowledgeBaseId])
+  @@index([knowledgeBaseId, status, isActive])
+}
+
+model KnowledgeChunk {
+  id         String @id @default(uuid())
+  content    String
+  chunkIndex Int
+
+  sectionTitle String?
+  pageNumber   Int?
+  sheetName    String?
+  slideNumber  Int?
+  locatorLabel String?
+
+  embedding Unsupported("vector(1536)")?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  documentId String
+  document   KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, chunkIndex])
+  @@index([documentId])
 }
 
 model AIEvaluation {

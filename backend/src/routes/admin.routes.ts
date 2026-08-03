@@ -2,6 +2,8 @@ import { Router } from "express";
 
 import {
   createCompany,
+  listCompanies,
+  updateCompanyStatus,
 } from "../controllers/company.controller.js";
 
 import {
@@ -12,16 +14,26 @@ import {
   requirePlatformAdmin,
 } from "../middlewares/platform-admin.middleware.js";
 
-const companyRouter = Router();
+const adminRouter = Router();
 
-companyRouter.use(
+adminRouter.use(
   authenticate,
   requirePlatformAdmin,
 );
 
-companyRouter.post(
-  "/",
+adminRouter.get(
+  "/companies",
+  listCompanies,
+);
+
+adminRouter.post(
+  "/companies",
   createCompany,
 );
 
-export default companyRouter;
+adminRouter.patch(
+  "/companies/:companyId/status",
+  updateCompanyStatus,
+);
+
+export default adminRouter;
