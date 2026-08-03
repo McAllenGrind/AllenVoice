@@ -1,0 +1,48 @@
+.admin-layout {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  background: #f5f7fb;
+}
+
+.admin-sidebar {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: #111827;
+  color: white;
+}
+
+.admin-brand h1 {
+  margin: 0;
+}
+
+.admin-brand p {
+  margin-top: 6px;
+  color: #9ca3af;
+}
+
+.admin-nav {
+  margin-top: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.admin-nav a {
+  padding: 12px;
+  border-radius: 8px;
+  color: #d1d5db;
+  text-decoration: none;
+}
+
+.admin-nav a:hover,
+.admin-nav a.active {
+  background: #1f2937;
+  color: white;
+}
+
+.admin-content {
+  padding: 32px;
+}
