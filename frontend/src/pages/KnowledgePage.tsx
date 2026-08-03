@@ -16,6 +16,7 @@ import {
   type KnowledgeDocumentStatus,
   type KnowledgeSourceType,
 } from "../api/api";
+import "./KnowledgePage.css";
 
 function formatFileSize(
   size: number | null,
@@ -384,7 +385,7 @@ export default function KnowledgePage() {
           current.map(
             (document) =>
               document.id ===
-              updated.id
+                updated.id
                 ? updated
                 : document,
           ),
@@ -508,7 +509,7 @@ export default function KnowledgePage() {
         current.map(
           (item) =>
             item.id ===
-            updated.id
+              updated.id
               ? updated
               : item,
         ),
@@ -542,7 +543,7 @@ export default function KnowledgePage() {
   }
 
   return (
-    <section>
+    <section className="knowledge-page">
       <h1>
         Base de connaissances
       </h1>
@@ -554,13 +555,19 @@ export default function KnowledgePage() {
       </p>
 
       {error && (
-        <p role="alert">
+        <p
+          className="knowledge-message knowledge-message--error"
+          role="alert"
+        >
           {error}
         </p>
       )}
 
       {success && (
-        <p role="status">
+        <p
+          className="knowledge-message knowledge-message--success"
+          role="status"
+        >
           {success}
         </p>
       )}
@@ -577,7 +584,10 @@ export default function KnowledgePage() {
         et JPG.
       </p>
 
-      <form onSubmit={handleUpload}>
+      <form
+        className="knowledge-form"
+        onSubmit={handleUpload}
+      >
         <div>
           <label htmlFor="knowledge-file">
             Fichier
@@ -592,7 +602,7 @@ export default function KnowledgePage() {
             onChange={(event) =>
               handleFileChange(
                 event.target.files?.[0] ??
-                  null,
+                null,
               )
             }
           />
@@ -692,7 +702,10 @@ export default function KnowledgePage() {
         manuellement
       </h2>
 
-      <form onSubmit={handleSubmit}>
+      <form
+        className="knowledge-form"
+        onSubmit={handleSubmit}
+      >
         <div>
           <label htmlFor="title">
             Titre
@@ -780,14 +793,14 @@ export default function KnowledgePage() {
           Aucun document enregistré.
         </p>
       ) : (
-        <div>
+        <div className="knowledge-list">
           {documents.map(
             (document) => {
               const isManual =
                 document.sourceType ===
-                  "TEXT" ||
+                "TEXT" ||
                 document.sourceType ===
-                  "FAQ";
+                "FAQ";
 
               const isPending =
                 pendingDocumentId ===
@@ -799,6 +812,7 @@ export default function KnowledgePage() {
 
               return (
                 <article
+                  className="knowledge-card"
                   key={document.id}
                 >
                   <h3>
@@ -853,25 +867,25 @@ export default function KnowledgePage() {
 
                   {document.fileSize !==
                     null && (
-                    <p>
-                      <strong>
-                        Taille :
-                      </strong>{" "}
-                      {formatFileSize(
-                        document.fileSize,
-                      )}
-                    </p>
-                  )}
+                      <p>
+                        <strong>
+                          Taille :
+                        </strong>{" "}
+                        {formatFileSize(
+                          document.fileSize,
+                        )}
+                      </p>
+                    )}
 
                   {document.pageCount !==
                     null && (
-                    <p>
-                      <strong>
-                        Pages :
-                      </strong>{" "}
-                      {document.pageCount}
-                    </p>
-                  )}
+                      <p>
+                        <strong>
+                          Pages :
+                        </strong>{" "}
+                        {document.pageCount}
+                      </p>
+                    )}
 
                   {document._count && (
                     <p>

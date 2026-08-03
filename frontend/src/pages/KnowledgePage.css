@@ -1,0 +1,309 @@
+.knowledge-page {
+  width: 100%;
+  max-width: 1050px;
+  margin: 0 auto;
+  padding: 40px 32px 70px;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.knowledge-page > h1 {
+  margin: 0 0 10px;
+  font-size: 38px;
+  line-height: 1.15;
+}
+
+.knowledge-page > h1 + p {
+  max-width: 720px;
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.knowledge-page > h2 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  font-size: 23px;
+}
+
+.knowledge-page > h2 + p {
+  margin-bottom: 22px;
+  color: var(--text);
+}
+
+.knowledge-page > hr {
+  margin: 34px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+/* Messages */
+
+.knowledge-message {
+  margin-top: 22px;
+  padding: 13px 16px;
+  border: 1px solid;
+  border-radius: 10px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.knowledge-message--success {
+  color: #166534;
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+.knowledge-message--error {
+  color: #b91c1c;
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+/* Formulaires */
+
+.knowledge-form {
+  display: grid;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  padding: 24px;
+  margin-top: 20px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg);
+  box-shadow:
+    0 8px 25px rgba(0, 0, 0, 0.04);
+}
+
+.knowledge-form > div {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.knowledge-form > div:has(textarea),
+.knowledge-form > p {
+  grid-column: 1 / -1;
+}
+
+.knowledge-form label {
+  color: var(--text-h);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.knowledge-form input,
+.knowledge-form textarea,
+.knowledge-form select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--text-h);
+  background: var(--bg);
+  font: inherit;
+  font-size: 15px;
+  outline: none;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+.knowledge-form textarea {
+  resize: vertical;
+  min-height: 140px;
+  line-height: 1.5;
+}
+
+.knowledge-form input:focus,
+.knowledge-form textarea:focus,
+.knowledge-form select:focus {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 3px var(--accent-bg);
+}
+
+.knowledge-form input[type="file"] {
+  padding: 8px;
+  cursor: pointer;
+}
+
+.knowledge-form input[type="file"]::file-selector-button {
+  margin-right: 12px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--text-h);
+  background: var(--accent-bg);
+  cursor: pointer;
+}
+
+.knowledge-form > p {
+  padding: 11px 13px;
+  border-radius: 8px;
+  background: var(--code-bg);
+  font-size: 14px;
+}
+
+.knowledge-page button {
+  width: fit-content;
+  padding: 10px 16px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: white;
+  background: var(--accent);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    transform 0.15s,
+    opacity 0.15s,
+    box-shadow 0.15s;
+}
+
+.knowledge-page button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow:
+    0 5px 15px rgba(0, 0, 0, 0.12);
+}
+
+.knowledge-page button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.knowledge-form > button {
+  margin-top: 2px;
+}
+
+/* Liste des documents */
+
+.knowledge-list {
+  display: grid;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 22px;
+}
+
+.knowledge-card {
+  position: relative;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--bg);
+  box-shadow:
+    0 6px 20px rgba(0, 0, 0, 0.035);
+  transition:
+    transform 0.2s,
+    box-shadow 0.2s,
+    border-color 0.2s;
+}
+
+.knowledge-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent-border);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.07);
+}
+
+.knowledge-card h3 {
+  margin: 0 0 16px;
+  color: var(--text-h);
+  font-size: 20px;
+  line-height: 1.3;
+}
+
+.knowledge-card p {
+  margin: 8px 0;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.knowledge-card p strong {
+  color: var(--text-h);
+}
+
+.knowledge-card button {
+  margin-top: 16px;
+  margin-right: 8px;
+}
+
+.knowledge-card button:last-of-type {
+  color: #b91c1c;
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
+.knowledge-card button:last-of-type:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.16);
+}
+
+.knowledge-card hr {
+  display: none;
+}
+
+/* Tablettes */
+
+@media (max-width: 850px) {
+  .knowledge-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Téléphones */
+
+@media (max-width: 650px) {
+  .knowledge-page {
+    padding: 28px 18px 50px;
+  }
+
+  .knowledge-page > h1 {
+    font-size: 30px;
+  }
+
+  .knowledge-form {
+    grid-template-columns: 1fr;
+    padding: 18px;
+  }
+
+  .knowledge-form > div,
+  .knowledge-form > p {
+    grid-column: 1;
+  }
+
+  .knowledge-page button {
+    width: 100%;
+  }
+
+  .knowledge-card button {
+    margin-right: 0;
+    margin-top: 9px;
+  }
+}
+
+/* Mode sombre */
+
+@media (prefers-color-scheme: dark) {
+  .knowledge-message--success {
+    color: #86efac;
+  }
+
+  .knowledge-message--error {
+    color: #fca5a5;
+  }
+
+  .knowledge-card,
+  .knowledge-form {
+    box-shadow:
+      0 8px 24px rgba(0, 0, 0, 0.18);
+  }
+
+  .knowledge-card button:last-of-type {
+    color: #fca5a5;
+  }
+}

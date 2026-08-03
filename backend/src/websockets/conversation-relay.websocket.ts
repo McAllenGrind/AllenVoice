@@ -462,6 +462,96 @@ class RelayTextWriter {
     }
 }
 
+function buildContextualKnowledgeQuery(
+    currentText: string,
+    turns: ConversationTurn[],
+): string {
+    const normalized =
+        normalizeText(
+            currentText,
+        );
+
+    const wordCount =
+        normalized
+            .split(" ")
+            .filter(Boolean)
+            .length;
+
+    const followUpPatterns = [
+        "cest quoi deja",
+        "c'est quoi deja",
+        "je nai pas compris",
+        "je n'ai pas compris",
+        "vous avez dit combien",
+        "combien deja",
+        "vous pouvez repeter",
+        "vous pouvez répéter",
+        "repetez",
+        "répétez",
+        "repete",
+        "répète",
+        "quel code",
+        "mais cest quoi",
+        "mais c'est quoi",
+        "500 combien",
+        "et pour celui",
+        "et pour celle",
+    ];
+
+    const looksLikeFollowUp =
+        wordCount <= 10 &&
+        followUpPatterns.some(
+            (pattern) =>
+                normalized.includes(
+                    normalizeText(
+                        pattern,
+                    ),
+                ),
+        );
+
+    if (!looksLikeFollowUp) {
+        return currentText;
+    }
+
+    const previousCustomerTurn =
+        [...turns]
+            .reverse()
+            .find((turn) => {
+                if (
+                    turn.role !==
+                    "CUSTOMER"
+                ) {
+                    return false;
+                }
+
+                const previousText =
+                    normalizeText(
+                        turn.text,
+                    );
+
+                const previousWordCount =
+                    previousText
+                        .split(" ")
+                        .filter(Boolean)
+                        .length;
+
+                return (
+                    previousWordCount >= 4 &&
+                    previousText !==
+                    normalized
+                );
+            });
+
+    if (!previousCustomerTurn) {
+        return currentText;
+    }
+
+    return [
+        previousCustomerTurn.text,
+        `Question de suivi : ${currentText}`,
+    ].join("\n");
+}
+
 function buildConversationQuestion(
     turns: ConversationTurn[],
     customerWantsToEnd: boolean,
@@ -1023,6 +1113,12 @@ export function registerConversationRelayWebSocket(
                                     customerWantsToEnd,
                                 );
 
+                            const knowledgeQuery =
+                                buildContextualKnowledgeQuery(
+                                    customerText,
+                                    conversation,
+                                );
+
                             const writer =
                                 new RelayTextWriter(
                                     socket,
@@ -1038,7 +1134,7 @@ export function registerConversationRelayWebSocket(
                                     await streamWithVoiceFallback(
                                         companyId,
                                         question,
-                                        customerText,
+                                        knowledgeQuery,
                                         writer,
                                         generationController.signal,
                                     );
