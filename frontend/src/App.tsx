@@ -15,6 +15,7 @@ import KnowledgePage from "./pages/KnowledgePage";
 import AgentPage from "./pages/AgentPage";
 import SettingsPage from "./pages/SettingsPage";
 import CallDetailPage from "./pages/CallDetailPage";
+import StatisticsPage from "./pages/StatisticsPage";
 import PlatformAdminRoute from "./components/PlatformAdminRoute";
 import AdminCompaniesPage from "./pages/AdminCompaniesPage";
 import AdminLayout from "./layouts/AdminLayout";
@@ -58,6 +59,11 @@ export default function App() {
         <Route
           path="/agent"
           element={<AgentPage />}
+        />
+
+        <Route
+          path="/statistics"
+          element={<StatisticsPage />}
         />
 
         <Route

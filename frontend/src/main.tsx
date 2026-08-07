@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router";
 
 import App from "./App";
 import "./index.css";
+import "./styles/AllenVoicePolish.css";
 
 createRoot(
   document.getElementById("root")!,
